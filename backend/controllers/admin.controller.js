@@ -181,3 +181,93 @@ exports.updateUser = async (req, res) => {
         return res.status(500).json({ success: false, message: error.message, data: null });
     }
 };
+
+// @desc    Disable / Enable a user (toggle ACTIVE <-> INACTIVE)
+// @route   PATCH /api/admin/users/:id/disable
+// @access  Private/Admin
+exports.disableUser = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found', data: null });
+        }
+
+        // Prevent admin from disabling themselves
+        if (user._id.toString() === req.user._id.toString()) {
+            return res.status(400).json({ success: false, message: 'You cannot disable your own account', data: null });
+        }
+
+        user.status = user.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+        await user.save();
+
+        return res.status(200).json({
+            success: true,
+            message: `User ${user.status === 'ACTIVE' ? 'enabled' : 'disabled'} successfully`,
+            data: {
+                _id: user._id,
+                fullName: user.fullName,
+                email: user.email,
+                status: user.status,
+                role: user.role,
+                department: user.department
+            }
+        });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message, data: null });
+    }
+};
+
+// @desc    Delete a user completely
+// @route   DELETE /api/admin/users/:id
+// @access  Private/Admin
+exports.deleteUser = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found', data: null });
+        }
+
+        // Prevent admin from deleting themselves
+        if (user._id.toString() === req.user._id.toString()) {
+            return res.status(400).json({ success: false, message: 'You cannot delete your own account', data: null });
+        }
+
+        const Project = require('../models/project.model');
+        const Task = require('../models/task.model');
+
+        // 1. Remove user from project members arrays (safe: project stays intact)
+        await Project.updateMany(
+            { members: user._id },
+            { $pull: { members: user._id } }
+        );
+
+        // 2. Nullify tasks assigned to the deleted user (task stays, assignment clears)
+        await Task.updateMany(
+            { assignedTo: user._id },
+            { $unset: { assignedTo: '' } }
+        );
+
+        // 3. Nullify tasks created by the deleted user (task stays, creator clears)
+        await Task.updateMany(
+            { createdBy: user._id },
+            { $unset: { createdBy: '' } }
+        );
+
+        // 4. Remove user's comments from tasks they commented on
+        await Task.updateMany(
+            { 'comments.user': user._id },
+            { $pull: { comments: { user: user._id } } }
+        );
+
+        // 5. Finally delete the user
+        await User.findByIdAndDelete(user._id);
+
+        return res.status(200).json({
+            success: true,
+            message: 'User deleted successfully and all references cleaned up',
+            data: { _id: user._id }
+        });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message, data: null });
+    }
+};

@@ -83,8 +83,25 @@ exports.login = async (req, res) => {
             return res.status(403).json({ success: false, message: 'You are not authorized to use this portal.', data: null });
         }
 
-        // Match password
-        const isMatch = await bcrypt.compare(password, user.password);
+        // Match password — with auto-migration for legacy plain-text passwords
+        let isMatch = false;
+
+        const isHashed = user.password && user.password.startsWith('$2');
+
+        if (isHashed) {
+            // Normal bcrypt comparison
+            isMatch = await bcrypt.compare(password, user.password);
+        } else {
+            // Legacy user: password was stored as plain text (before hashing was enforced)
+            isMatch = (password === user.password);
+
+            if (isMatch) {
+                // Auto-migrate: hash and save for all future logins
+                const salt = await bcrypt.genSalt(10);
+                user.password = await bcrypt.hash(password, salt);
+                await user.save();
+            }
+        }
 
         if (!isMatch) {
             return res.status(400).json({ success: false, message: 'Invalid email or password', data: null });

@@ -16,10 +16,10 @@ const setLoginType = (type) => (req, res, next) => {
     next();
 };
 
-// Public signup is removed as per Phase 2 requirements
-// router.post('/login', authController.login); // Deprecated generic login
+// Unified login route — auto-detects role from DB, no loginType enforcement
+router.post('/login', authController.login);
 
-// New precise roles login routes
+// Legacy role-specific routes kept for backward compatibility
 router.post('/admin-login', setLoginType('admin'), authController.login);
 router.post('/manager-login', setLoginType('manager'), authController.login);
 router.post('/employee-login', setLoginType('employee'), authController.login);

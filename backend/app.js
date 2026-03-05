@@ -15,6 +15,7 @@ const userRoutes = require('./routes/user.routes');
 const dailyReportRoutes = require('./routes/dailyReport.routes');
 const customStageRoutes = require('./routes/customStage.routes');
 const subtaskRoutes = require('./routes/subtask.routes');
+const quickTaskRoutes = require('./routes/quickTask.routes');
 
 const app = express();
 
@@ -60,6 +61,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/daily-reports', dailyReportRoutes);
 app.use('/api/custom-stages', customStageRoutes);
 app.use('/api/subtasks', subtaskRoutes);
+app.use('/api/quick-tasks', quickTaskRoutes);
 
 // Health Route
 app.get('/api/health', (req, res) => {

@@ -2,9 +2,7 @@ import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import DashboardLayout from './layouts/DashboardLayout';
 import Dashboard from './pages/Dashboard/Dashboard';
-import AdminLogin from './pages/Auth/AdminLogin';
-import ManagerLogin from './pages/Auth/ManagerLogin';
-import EmployeeLogin from './pages/Auth/EmployeeLogin';
+import Login from './pages/Auth/Login';
 import Profile from './pages/Users/Profile';
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import CreateUser from './pages/Admin/CreateUser';
@@ -17,6 +15,7 @@ import Tasks from './pages/Tasks/Tasks';
 import TaskDetails from './pages/Tasks/TaskDetails';
 import Activity from './pages/Activity/Activity';
 import Notifications from './pages/Activity/Notifications';
+import QuickTasks from './pages/QuickTasks/QuickTasks';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import { useAuth } from './context/AuthContext';
@@ -24,13 +23,13 @@ import { useAuth } from './context/AuthContext';
 // Redirects '/' based on auth state and role
 const RootRedirect = () => {
     const { isAuthenticated, role } = useAuth();
-    if (!isAuthenticated) return <Navigate to="/employee-login" replace />;
+    if (!isAuthenticated) return <Navigate to="/login" replace />;
     if (role === 'admin') return <Navigate to="/admin" replace />;
     if (role === 'manager') return <Navigate to="/dashboard" replace />;
     return <Navigate to="/employee-dashboard" replace />;
 };
 
-// Prevents already-logged-in users from seeing login pages
+// Prevents already-logged-in users from seeing the login page
 const PublicRoute = ({ children }) => {
     const { isAuthenticated, role } = useAuth();
     if (!isAuthenticated) return children;
@@ -58,10 +57,14 @@ function App() {
         <Router>
             <Routes>
                 <Route path="/" element={<RootRedirect />} />
-                <Route path="/login" element={<Navigate to="/employee-login" replace />} />
-                <Route path="/admin-login" element={<PublicRoute><AdminLogin /></PublicRoute>} />
-                <Route path="/manager-login" element={<PublicRoute><ManagerLogin /></PublicRoute>} />
-                <Route path="/employee-login" element={<PublicRoute><EmployeeLogin /></PublicRoute>} />
+
+                {/* Unified login page */}
+                <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+
+                {/* Legacy portal paths — all redirect to the unified /login */}
+                <Route path="/admin-login" element={<Navigate to="/login" replace />} />
+                <Route path="/manager-login" element={<Navigate to="/login" replace />} />
+                <Route path="/employee-login" element={<Navigate to="/login" replace />} />
 
                 {/* Nested Routes inside DashboardLayout */}
                 <Route element={<DashboardLayout />}>
@@ -118,6 +121,7 @@ function App() {
                     <Route path="/tasks/:id" element={<ProtectedRoute><TaskDetails /></ProtectedRoute>} />
                     <Route path="/activity" element={<ProtectedRoute><Activity /></ProtectedRoute>} />
                     <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+                    <Route path="/quick-tasks" element={<ProtectedRoute><QuickTasks /></ProtectedRoute>} />
 
                     {/* Public Profile - any logged in user */}
                     <Route
