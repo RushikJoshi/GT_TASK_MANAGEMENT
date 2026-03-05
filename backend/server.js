@@ -28,7 +28,7 @@ const initAdminUser = async () => {
                 role: "admin",
                 department: "Master Control",
                 jobTitle: "System Administrator",
-                status: "Active"
+                status: "ACTIVE"
             });
             console.log("Default Built-in Admin created successfully!");
         } else {
