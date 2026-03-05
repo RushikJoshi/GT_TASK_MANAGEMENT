@@ -1,0 +1,22 @@
+[
+  {
+    "_id": "69a52a67eb314865d9159caf",
+    "email": "ivaharpal12@gmail.com",
+    "password": "$2b$10$XTOpcIcUVmaVbXvtqFAGIuG9Keak1brjZvLTLa9fnfE4ELd30Dhpq",
+    "role": "User"
+  },
+  {
+    "_id": "69a576e322048b418eeadc54",
+    "fullName": "Super Admin",
+    "email": "admin@gmail.com",
+    "password": "$2b$10$zQR76TiaipR6sLiCYeqjzeLWn6X3srgIuEKDf/QGlayuHW9I5t/BS",
+    "role": "admin"
+  },
+  {
+    "_id": "69a57d77fa5125f9f40a90f9",
+    "fullName": "iva harpal",
+    "email": "ivaharpal@gmail.com",
+    "password": "$2b$10$vQhidoKG.xkcJ1mmqWKwIO5fZRZh.Gw4LPH9tLqbgLYH2/9E.IdR.",
+    "role": "manager"
+  }
+]
