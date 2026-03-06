@@ -5,13 +5,11 @@ const User = require('../models/user.model');
 // @access  Private (Admin/Manager)
 exports.getEmployees = async (req, res) => {
     try {
-        const filter = { status: 'Active' };
+        // status is stored as uppercase in the database; earlier code mistakenly used
+        // 'Active' which returned no results. normalize and match exactly.
+        const filter = { status: 'ACTIVE', role: 'employee' };
 
-        // If they want everyone who is an employee
-        filter.role = 'employee';
-
-        // Only if manager, we might just load employees reporting to them? 
-        // Instructions: 'select employees from dropdown', assume all active employees
+        // (If business rules change later we might filter by reportingManager etc.)
         const employees = await User.find(filter)
             .select('fullName email avatar _id')
             .sort({ fullName: 1 });

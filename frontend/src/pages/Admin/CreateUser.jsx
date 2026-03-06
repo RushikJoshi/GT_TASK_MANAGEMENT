@@ -24,7 +24,7 @@ export default function CreateUser() {
         role: 'employee',
         department: '',
         jobTitle: '',
-        status: 'Active',
+        status: 'ACTIVE',
         joiningDate: new Date().toISOString().split('T')[0],
         location: '',
         employmentType: 'Full-time',

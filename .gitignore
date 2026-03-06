@@ -42,3 +42,4 @@ uploads/
 *.pem
 *.key
 *.cert
+*.zip
