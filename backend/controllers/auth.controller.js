@@ -64,11 +64,14 @@ exports.register = async (req, res) => {
 
 exports.login = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        let { email, password } = req.body;
 
         if (!email || !password) {
             return res.status(400).json({ success: false, message: 'Please provide email and password', data: null });
         }
+
+        email = email.trim().toLowerCase();
+        password = password.trim();
 
         // Find user
         const user = await User.findOne({ email });
@@ -149,11 +152,14 @@ exports.updateProfile = async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found', data: null });
         }
 
-        const { avatar, fullName, phone, jobTitle, department, preferences } = req.body;
+        const { avatar, name, fullName, phone, bio, jobTitle, department, preferences } = req.body;
 
-        if (fullName) user.fullName = fullName;
-        if (avatar) user.avatar = avatar;
+        // Accept either 'name' or 'fullName' from frontend
+        const nameValue = name || fullName;
+        if (nameValue) user.fullName = nameValue;
+        if (avatar !== undefined) user.avatar = avatar;
         if (phone !== undefined) user.phone = phone;
+        if (bio !== undefined) user.bio = bio;
         if (jobTitle !== undefined) user.jobTitle = jobTitle;
         if (department !== undefined) user.department = department;
 
@@ -165,6 +171,8 @@ exports.updateProfile = async (req, res) => {
         const updatedUser = await user.save();
         const userData = updatedUser.toObject();
         delete userData.password; // Don't send password back
+        // Add 'name' alias so frontend receives both
+        userData.name = userData.fullName;
 
         return res.status(200).json({
             success: true,
@@ -174,5 +182,35 @@ exports.updateProfile = async (req, res) => {
 
     } catch (error) {
         return res.status(500).json({ success: false, message: error.message, data: null });
+    }
+};
+
+exports.updatePassword = async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ success: false, message: 'Please provide both current and new passwords.' });
+        }
+
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // Check if current password matches
+        const isMatch = await bcrypt.compare(currentPassword, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ success: false, message: 'Incorrect current password' });
+        }
+
+        // Hash and save new password
+        const salt = await bcrypt.genSalt(10);
+        user.password = await bcrypt.hash(newPassword, salt);
+        await user.save();
+
+        return res.status(200).json({ success: true, message: 'Password updated successfully' });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
     }
 };

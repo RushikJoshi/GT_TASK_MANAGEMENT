@@ -137,10 +137,6 @@ export default function Projects() {
         try {
             const res = await axiosInstance.post('/projects', formData);
             if (res.data.success) {
-                const projectId = res.data.data._id;
-                // Update workflow immediately as the creation API doesn't pick it up manually
-                await axiosInstance.put(`/projects/${projectId}/workflow`, { workflow: formData.workflow });
-
                 setShowModal(false);
                 setFormData({
                     name: '',

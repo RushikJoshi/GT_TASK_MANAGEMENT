@@ -16,6 +16,8 @@ const userSchema = new mongoose.Schema({
     employmentType: { type: String, enum: ['Full-time', 'Part-time', 'Contract'], default: 'Full-time' },
     reportingManager: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     skills: [{ type: String }],
+    avatar: { type: String, default: '' },
+    bio: { type: String, default: '' },
 
     preferences: {
         theme: { type: String, default: 'light' },

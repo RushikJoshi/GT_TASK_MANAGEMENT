@@ -35,5 +35,11 @@ export const quickTaskApi = {
     updateChecklistItem: async (taskId, itemId, completed) => {
         const res = await axiosInstance.patch(`${BASE}/${taskId}/checklist/${itemId}`, { completed });
         return res.data;
+    },
+    // alias so both names work
+    toggleChecklist: async (taskId, itemId, completed) => {
+        const res = await axiosInstance.patch(`${BASE}/${taskId}/checklist/${itemId}`, { completed });
+        return res.data;
     }
 };
+

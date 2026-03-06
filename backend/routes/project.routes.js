@@ -7,6 +7,7 @@ router.use(authenticateToken); // Protect all project routes
 
 router.get('/', projectController.getProjects);
 router.get('/:id', projectController.getProjectById);
+router.get('/:id/workflow', projectController.getWorkflow); // accessible to all authenticated users
 
 // Only Admin/Manager can create projects or add members
 router.post('/', authorizeRoles('admin', 'manager'), projectController.createProject);

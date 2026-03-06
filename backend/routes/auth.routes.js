@@ -25,5 +25,6 @@ router.post('/manager-login', setLoginType('manager'), authController.login);
 router.post('/employee-login', setLoginType('employee'), authController.login);
 router.get('/profile', protect, authController.getProfile);
 router.put('/update-profile', protect, authController.updateProfile);
+router.put('/update-password', protect, authController.updatePassword);
 
 module.exports = router;

@@ -6,14 +6,15 @@ const Project = require('../models/project.model');
 // EXPLANATION: We use RBAC to ensure employees cannot create projects.
 exports.createProject = async (req, res) => {
     try {
-        const { name, description, deadline, members, status } = req.body;
+        const { name, description, deadline, members, status, workflow } = req.body;
         const project = await Project.create({
             name,
             description,
             deadline,
             status: status || 'In Progress',
             members: members || [],
-            createdBy: req.user._id
+            createdBy: req.user._id,
+            workflow: workflow || []
         });
 
         // Log activity
@@ -86,6 +87,19 @@ exports.getProjectById = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+// @desc    Get project workflow
+// @route   GET /api/projects/:id/workflow
+// @access  Private (all authenticated users)
+exports.getWorkflow = async (req, res) => {
+    try {
+        const project = await Project.findById(req.params.id).select('workflow');
+        if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
+        res.status(200).json({ success: true, data: project.workflow || [] });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 // @desc    Update project workflow
 // @route   PUT /api/projects/:id/workflow
 // @access  Private (Admin/Manager only)

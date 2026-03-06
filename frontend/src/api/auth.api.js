@@ -16,5 +16,9 @@ export const authApi = {
     updateProfile: async (profileData) => {
         const response = await axiosInstance.put('/auth/update-profile', profileData);
         return response.data;
+    },
+    updatePassword: async (currentPassword, newPassword) => {
+        const response = await axiosInstance.put('/auth/update-password', { currentPassword, newPassword });
+        return response.data;
     }
 };

@@ -48,12 +48,19 @@ export const AuthProvider = ({ children }) => {
         sessionStorage.removeItem('token');
     };
 
+    const updateUser = (userData) => {
+        const updated = { ...user, ...userData };
+        setUser(updated);
+        sessionStorage.setItem('user', JSON.stringify(updated));
+    };
+
     const value = {
         user,
         role: user?.role,
         token,
         login,
         logout,
+        updateUser,
         isAuthenticated: !!token
     };
 

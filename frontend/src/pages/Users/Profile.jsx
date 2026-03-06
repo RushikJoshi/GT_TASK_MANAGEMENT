@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '../../api/auth.api';
+import { useAuth } from '../../context/AuthContext';
 import Button from '../../components/UI/Button';
 import Input from '../../components/UI/Input';
 import Cropper from 'react-easy-crop';
@@ -8,9 +9,15 @@ import getCroppedImg from '../../utils/cropImage';
 
 export default function Profile() {
     const navigate = useNavigate();
+    const { updateUser } = useAuth();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState({ text: '', type: '' });
+
+    // Password Update States
+    const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    const [passwordSaving, setPasswordSaving] = useState(false);
+    const [passwordMessage, setPasswordMessage] = useState({ text: '', type: '' });
 
     // Cropper states
     const [imageSrc, setImageSrc] = useState(null);
@@ -118,8 +125,14 @@ export default function Profile() {
             const res = await authApi.updateProfile(dataToUpdate);
             if (res.success) {
                 setMessage({ text: 'Profile updated successfully!', type: 'success' });
-                localStorage.setItem('user', JSON.stringify(res.data)); // Update local user state
-
+                // Update global auth context — this refreshes navbar photo & name instantly
+                updateUser(res.data);
+                // Also update formData so the avatar shows immediately on this page
+                setFormData(prev => ({
+                    ...prev,
+                    avatar: res.data.avatar || prev.avatar,
+                    name: res.data.name || prev.name,
+                }));
                 // Ensure theme is persisted
                 if (res.data.preferences?.theme === 'dark') {
                     document.documentElement.classList.add('dark');
@@ -133,6 +146,41 @@ export default function Profile() {
             setMessage({ text: error.response?.data?.message || 'An error occurred while saving', type: 'error' });
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handlePasswordChange = (e) => {
+        setPasswordForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    };
+
+    const handlePasswordSubmit = async (e) => {
+        e.preventDefault();
+        setPasswordMessage({ text: '', type: '' });
+
+        if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+            setPasswordMessage({ text: 'New passwords do not match.', type: 'error' });
+            return;
+        }
+
+        if (passwordForm.newPassword.length < 6) {
+            setPasswordMessage({ text: 'Password must be at least 6 characters long.', type: 'error' });
+            return;
+        }
+
+        setPasswordSaving(true);
+        try {
+            const res = await authApi.updatePassword(passwordForm.currentPassword, passwordForm.newPassword);
+            if (res.success) {
+                setPasswordMessage({ text: 'Password successfully updated!', type: 'success' });
+                setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                setTimeout(() => setPasswordMessage({ text: '', type: '' }), 5000);
+            } else {
+                setPasswordMessage({ text: res.message || 'Failed to update password.', type: 'error' });
+            }
+        } catch (error) {
+            setPasswordMessage({ text: error.response?.data?.message || 'Error occurred while updating password.', type: 'error' });
+        } finally {
+            setPasswordSaving(false);
         }
     };
 
@@ -456,16 +504,82 @@ export default function Profile() {
                                 <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-500"></div>
                             </label>
                         </div>
+                    </div>
+                </div>
+            </form>
 
-                        <div className="mt-6 pt-6 border-t border-slate-100">
+            {/* Change Password Section */}
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 pb-10">
+                <div className="xl:col-start-3 bg-white rounded-[24px] border border-slate-100 shadow-sm p-6 md:p-8 flex flex-col gap-6">
+                    <div>
+                        <h3 className="text-[16px] font-heading font-bold text-slate-800">Change Password</h3>
+                        <p className="text-[13px] text-slate-500 mt-1 font-medium">Update your account security password.</p>
+                    </div>
+
+                    {passwordMessage.text && (
+                        <div className={`p-4 rounded-[12px] text-[12px] font-bold border ${passwordMessage.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
+                            {passwordMessage.text}
+                        </div>
+                    )}
+
+                    <form onSubmit={handlePasswordSubmit} className="flex flex-col gap-4">
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2" htmlFor="currentPassword">
+                                Current Password
+                            </label>
+                            <Input
+                                id="currentPassword"
+                                name="currentPassword"
+                                type="password"
+                                value={passwordForm.currentPassword}
+                                onChange={handlePasswordChange}
+                                required
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2" htmlFor="newPassword">
+                                New Password
+                            </label>
+                            <Input
+                                id="newPassword"
+                                name="newPassword"
+                                type="password"
+                                value={passwordForm.newPassword}
+                                onChange={handlePasswordChange}
+                                required
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2" htmlFor="confirmPassword">
+                                Confirm New Password
+                            </label>
+                            <Input
+                                id="confirmPassword"
+                                name="confirmPassword"
+                                type="password"
+                                value={passwordForm.confirmPassword}
+                                onChange={handlePasswordChange}
+                                required
+                            />
+                        </div>
+                        <Button
+                            type="submit"
+                            variant="primary"
+                            disabled={passwordSaving}
+                            className="mt-2 w-full disabled:opacity-75 disabled:cursor-not-allowed bg-slate-800 hover:bg-slate-900 text-white rounded-xl py-2.5 font-bold shadow-sm"
+                        >
+                            {passwordSaving ? 'Updating...' : 'Update Password'}
+                        </Button>
+
+                        <div className="mt-8 pt-6 border-t border-slate-100">
                             <button type="button" className="text-[13px] font-bold text-rose-500 hover:text-rose-600 transition-colors w-full text-left flex items-center gap-2">
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                 Request Account Deletion
                             </button>
                         </div>
-                    </div>
+                    </form>
                 </div>
-            </form>
+            </div>
         </div>
     );
 }

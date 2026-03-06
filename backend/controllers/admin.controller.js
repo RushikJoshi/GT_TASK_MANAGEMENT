@@ -290,3 +290,100 @@ exports.deleteUser = async (req, res) => {
         return res.status(500).json({ success: false, message: error.message, data: null });
     }
 };
+
+// @desc    Bulk create users from Excel data
+// @route   POST /api/admin/bulk-create-users
+// @access  Private/Admin
+exports.bulkCreateUsers = async (req, res) => {
+    try {
+        const { users } = req.body;
+        if (!users || !Array.isArray(users)) {
+            return res.status(400).json({ success: false, message: 'Invalid data format. Expected an array of users.' });
+        }
+
+        const results = { successful: 0, failed: 0, errors: [] };
+
+        let nextId = 1;
+        const lastUser = await User.findOne({ employeeId: /^EMP-\d+$/ }).sort({ _id: -1 });
+        if (lastUser && lastUser.employeeId) {
+            const numStr = lastUser.employeeId.replace('EMP-', '');
+            const num = parseInt(numStr, 10);
+            if (!isNaN(num)) nextId = num + 1;
+        }
+
+        const salt = await bcrypt.genSalt(10);
+
+        for (let i = 0; i < users.length; i++) {
+            const u = users[i];
+            try {
+                if (!u.fullName || !u.email || !u.role) {
+                    throw new Error(`Row ${i + 1}: Missing required fields (fullName, email, role)`);
+                }
+
+                const userExists = await User.findOne({ email: u.email });
+                if (userExists) {
+                    throw new Error(`Row ${i + 1}: User already exists with email ${u.email}`);
+                }
+
+                let generatedEmployeeId = u.employeeId;
+                if (!generatedEmployeeId || generatedEmployeeId.toString().trim() === '') {
+                    let isUnique = false;
+                    while (!isUnique) {
+                        generatedEmployeeId = `EMP-${nextId.toString().padStart(4, '0')}`;
+                        const existing = await User.findOne({ employeeId: generatedEmployeeId });
+                        if (existing) {
+                            nextId++;
+                        } else {
+                            isUnique = true;
+                            nextId++;
+                        }
+                    }
+                } else {
+                    const empIdExists = await User.findOne({ employeeId: generatedEmployeeId });
+                    if (empIdExists) {
+                        throw new Error(`Row ${i + 1}: Employee ID ${generatedEmployeeId} already exists`);
+                    }
+                }
+
+                const plainPassword = u.password ? u.password.toString().trim() : 'Welcome@123';
+                const hashedPassword = await bcrypt.hash(plainPassword, salt);
+
+                let role = u.role.toString().toLowerCase();
+                if (!['admin', 'manager', 'employee'].includes(role)) {
+                    role = 'employee';
+                }
+
+                const newUserData = {
+                    fullName: u.fullName.toString().trim(),
+                    email: u.email.toString().trim().toLowerCase(),
+                    password: hashedPassword,
+                    employeeId: generatedEmployeeId,
+                    role: role,
+                    department: (u.department || '').toString().trim(),
+                    jobTitle: (u.jobTitle || '').toString().trim(),
+                    status: 'ACTIVE',
+                    phone: (u.phone || '').toString().trim(),
+                    location: (u.location || '').toString().trim(),
+                    employmentType: (u.employmentType || 'Full-time').toString().trim(),
+                    skills: u.skills ? u.skills.toString().split(',').map(s => s.trim()).filter(s => s) : [],
+                };
+
+                await User.create(newUserData);
+                results.successful++;
+
+            } catch (err) {
+                results.failed++;
+                results.errors.push(err.message);
+            }
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: `Bulk creation completed. ${results.successful} created, ${results.failed} failed.`,
+            data: results
+        });
+
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};

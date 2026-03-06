@@ -8,6 +8,7 @@ router.use(authenticateToken);
 router.use(authorizeRoles('admin'));
 
 router.post('/create-user', adminController.createUser);
+router.post('/bulk-create-users', adminController.bulkCreateUsers);
 router.get('/users', adminController.getUsers);
 router.get('/managers', adminController.getManagers);
 router.put('/users/:id', adminController.updateUser);
