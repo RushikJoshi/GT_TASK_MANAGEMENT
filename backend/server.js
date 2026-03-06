@@ -32,7 +32,14 @@ const initAdminUser = async () => {
             });
             console.log("Default Built-in Admin created successfully!");
         } else {
-            console.log("Built-in Admin already exists. Auto-creation skipped.");
+            // ensure existing record has correct admin role
+            if (adminExists.role !== 'admin') {
+                adminExists.role = 'admin';
+                await adminExists.save();
+                console.log("Existing user updated to admin role.");
+            } else {
+                console.log("Built-in Admin already exists. Auto-creation skipped.");
+            }
         }
     } catch (error) {
         console.error("Error creating default Admin user:", error);

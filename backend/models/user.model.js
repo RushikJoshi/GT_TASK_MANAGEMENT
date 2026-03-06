@@ -17,6 +17,10 @@ const userSchema = new mongoose.Schema({
     reportingManager: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     skills: [{ type: String }],
 
+    // avatar is stored as base64 string (without metadata) plus mime type for reconstruction
+    avatar: { type: String, default: '' },
+    avatarMime: { type: String, default: '' },
+
     preferences: {
         theme: { type: String, default: 'light' },
         notifications: { type: Boolean, default: true }

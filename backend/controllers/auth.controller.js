@@ -108,13 +108,18 @@ exports.login = async (req, res) => {
         }
 
         const token = generateToken(user._id);
+        // convert stored avatar+mime back to DataURL for client
+        let avatarUrl = '';
+        if (user.avatar && user.avatarMime) {
+            avatarUrl = `data:${user.avatarMime};base64,${user.avatar}`;
+        }
         const userData = {
             _id: user._id,
             name: user.fullName,  // Output as name specifically mapped
             fullName: user.fullName, // Also keeping fullName for frontend compatibility
             email: user.email,
             role: user.role,
-            avatar: user.avatar
+            avatar: avatarUrl
         };
 
         return res.status(200).json({
@@ -131,9 +136,16 @@ exports.login = async (req, res) => {
 
 exports.getProfile = async (req, res) => {
     try {
-        const user = await User.findById(req.user.id).select('-password');
+        let user = await User.findById(req.user.id).select('-password');
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found', data: null });
+        }
+        user = user.toObject();
+        // reconstruct DataURL to send
+        if (user.avatar && user.avatarMime) {
+            user.avatar = `data:${user.avatarMime};base64,${user.avatar}`;
+        } else {
+            user.avatar = '';
         }
         res.status(200).json({ success: true, message: 'Profile fetched', data: user });
     } catch (error) {
@@ -152,7 +164,17 @@ exports.updateProfile = async (req, res) => {
         const { avatar, fullName, phone, jobTitle, department, preferences } = req.body;
 
         if (fullName) user.fullName = fullName;
-        if (avatar) user.avatar = avatar;
+        if (avatar) {
+            // avatar expected as DataURL; strip metadata and save separately
+            const match = avatar.match(/^data:(.+);base64,(.+)$/);
+            if (match) {
+                user.avatarMime = match[1];
+                user.avatar = match[2];
+            } else {
+                // if already raw base64, just save it
+                user.avatar = avatar;
+            }
+        }
         if (phone !== undefined) user.phone = phone;
         if (jobTitle !== undefined) user.jobTitle = jobTitle;
         if (department !== undefined) user.department = department;
@@ -163,8 +185,14 @@ exports.updateProfile = async (req, res) => {
         }
 
         const updatedUser = await user.save();
-        const userData = updatedUser.toObject();
+        let userData = updatedUser.toObject();
         delete userData.password; // Don't send password back
+        // reconstruct avatar DataURL
+        if (userData.avatar && userData.avatarMime) {
+            userData.avatar = `data:${userData.avatarMime};base64,${userData.avatar}`;
+        } else {
+            userData.avatar = '';
+        }
 
         return res.status(200).json({
             success: true,

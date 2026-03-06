@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import axiosInstance from '../../api/axiosInstance';
 import { quickTaskApi } from '../../api/quickTask.api';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -176,7 +177,7 @@ export default function QuickTasks() {
     // ─── Save task ────────────────────────────────────────────────────────
     const handleSave = async (e) => {
         e.preventDefault();
-        if (!formData.title.trim()) return;
+        if (!formData.title.trim()) return; // client‑side guard
         setSaving(true);
         try {
             const payload = {
@@ -198,10 +199,17 @@ export default function QuickTasks() {
                 fetchTasks(1);
                 fetchStats();
             } else {
+                // API responded with a 200/201 but success=false
                 alert(res.message || 'Failed to save task');
             }
-        } catch (_) { alert('Something went wrong'); }
-        finally { setSaving(false); }
+        } catch (err) {
+            // axios throws for 4xx/5xx; show server message if present
+            console.error('Quick task save error', err);
+            const msg = err.response?.data?.message || 'Something went wrong';
+            alert(msg);
+        } finally {
+            setSaving(false);
+        }
     };
 
     // ─── Delete task ──────────────────────────────────────────────────────

@@ -150,6 +150,27 @@ export default function Profile() {
         }
     }, [imageSrc, croppedAreaPixels]);
 
+    // saves avatar immediately via API
+    const handleSavePhoto = async () => {
+        if (!formData.avatar) return;
+        setSaving(true);
+        try {
+            const res = await authApi.updateProfile({ avatar: formData.avatar });
+            if (res.success) {
+                setMessage({ text: 'Photo saved successfully', type: 'success' });
+                // update stored user as well
+                const updated = res.data;
+                localStorage.setItem('user', JSON.stringify(updated));
+            } else {
+                setMessage({ text: res.message || 'Unable to save photo', type: 'error' });
+            }
+        } catch (err) {
+            setMessage({ text: err.response?.data?.message || 'Unable to save photo', type: 'error' });
+        } finally {
+            setSaving(false);
+        }
+    };
+
     if (loading) {
         return (
             <div className="w-full h-full min-h-[400px] flex items-center justify-center">
@@ -289,6 +310,7 @@ export default function Profile() {
                                     <div className="flex gap-2 w-full sm:w-auto">
                                         <Button variant="secondary" onClick={() => setImageSrc(null)} className="w-full sm:w-auto">Cancel</Button>
                                         <Button variant="primary" onClick={showCroppedImage} className="w-full sm:w-auto">Apply</Button>
+                                        <Button variant="primary" onClick={async () => { await showCroppedImage(); handleSavePhoto(); }} className="w-full sm:w-auto">Save Photo</Button>
                                     </div>
                                 </div>
                             </div>

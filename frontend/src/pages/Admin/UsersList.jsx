@@ -101,7 +101,8 @@ export default function UsersList() {
             }
         } catch (error) {
             console.error('Error toggling user status:', error);
-            setActionError('Something went wrong. Please try again.');
+            const message = error.response?.data?.message || 'Something went wrong. Please try again.';
+            setActionError(message);
         }
     };
 

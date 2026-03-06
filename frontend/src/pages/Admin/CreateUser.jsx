@@ -24,7 +24,7 @@ export default function CreateUser() {
         role: 'employee',
         department: '',
         jobTitle: '',
-        status: 'Active',
+        status: 'ACTIVE',
         joiningDate: new Date().toISOString().split('T')[0],
         location: '',
         employmentType: 'Full-time',
@@ -40,16 +40,16 @@ export default function CreateUser() {
         const fetchManagers = async () => {
             setLoadingManagers(true);
             try {
-                try {
                 const res = await axiosInstance.get('/admin/managers');
                 if (res.data.success) {
                     setManagers(res.data.data);
                 }
             } catch (err) {
                 console.error("Failed to fetch managers", err);
-            }
-            } catch (err) {
-                console.error("Failed to fetch managers", err);
+                // If 403, perhaps redirect or show message
+                if (err.response?.status === 403) {
+                    setMessage({ text: 'You do not have permission to access this page.', type: 'error' });
+                }
             } finally {
                 setLoadingManagers(false);
             }
