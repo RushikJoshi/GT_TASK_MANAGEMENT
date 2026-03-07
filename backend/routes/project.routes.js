@@ -9,9 +9,10 @@ router.get('/', projectController.getProjects);
 router.get('/:id', projectController.getProjectById);
 router.get('/:id/workflow', projectController.getWorkflow); // accessible to all authenticated users
 
-// Only Admin/Manager can create projects or add members
-router.post('/', authorizeRoles('admin', 'manager'), projectController.createProject);
+// Only Admin can create projects. Manager can edit.
+router.post('/', authorizeRoles('admin'), projectController.createProject);
 router.put('/:id', authorizeRoles('admin', 'manager'), projectController.updateProject);
+router.delete('/:id', authorizeRoles('admin', 'manager'), projectController.deleteProject);
 router.post('/:projectId/members', authorizeRoles('admin', 'manager'), projectController.addMember);
 router.put('/:id/workflow', authorizeRoles('admin', 'manager'), projectController.updateWorkflow);
 
