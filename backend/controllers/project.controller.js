@@ -141,3 +141,19 @@ exports.updateProject = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+// @desc    Delete project
+// @route   DELETE /api/projects/:id
+// @access  Private (Admin/Manager only)
+exports.deleteProject = async (req, res) => {
+    try {
+        const project = await Project.findById(req.params.id);
+        if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
+
+        await Project.findByIdAndDelete(req.params.id);
+
+        res.status(200).json({ success: true, message: 'Project deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};

@@ -13,7 +13,8 @@ router.post('/', authorizeRoles('admin', 'manager'), taskController.createTask);
 // Any authenticated user can update status (Employee can ONLY update status)
 router.put('/:taskId/status', taskController.updateTaskStatus);
 router.put('/:id/status', taskController.updateTaskStatus);
-router.put('/:id', taskController.updateTask);
+router.put('/:id', authorizeRoles('admin', 'manager'), taskController.updateTask);
+router.delete('/:id', authorizeRoles('admin', 'manager'), taskController.deleteTask);
 
 router.get('/:id', taskController.getTaskById);
 router.post('/:id/comments', taskController.addComment);

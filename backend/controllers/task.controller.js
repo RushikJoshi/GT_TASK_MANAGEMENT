@@ -1,4 +1,39 @@
 const Task = require('../models/task.model');
+const Project = require('../models/project.model');
+
+// Helper to update project progress
+const updateProjectProgress = async (projectId) => {
+    try {
+        const project = await Project.findById(projectId);
+        if (!project) return;
+
+        const tasks = await Task.find({ project: projectId });
+        if (tasks.length === 0) {
+            project.progress = 0;
+            await project.save();
+            return;
+        }
+
+        const doneStatuses = project.workflow.filter(w => w.type === 'done').map(w => w.name);
+        if (doneStatuses.length === 0) doneStatuses.push('Completed', 'Done');
+
+        const completedTasks = tasks.filter(t => doneStatuses.includes(t.status));
+        const progress = Math.round((completedTasks.length / tasks.length) * 100);
+
+        project.progress = progress;
+
+        // Auto-update project status if 100%
+        if (progress === 100) {
+            project.status = 'Completed';
+        } else if (progress > 0 && project.status === 'Needs Start' || project.status === 'To Do') {
+            project.status = 'In Progress';
+        }
+
+        await project.save();
+    } catch (err) {
+        console.error('Error updating project progress:', err);
+    }
+};
 
 // @desc    Create a task
 // @route   POST /api/tasks
@@ -34,6 +69,9 @@ exports.createTask = async (req, res) => {
                 type: 'task'
             });
         }
+
+        // Update progress
+        await updateProjectProgress(projectId);
 
         res.status(201).json({ success: true, data: task });
     } catch (error) {
@@ -99,6 +137,11 @@ exports.updateTask = async (req, res) => {
             targetName: task.title
         });
 
+        // Update progress if status changed
+        if (status !== undefined) {
+            await updateProjectProgress(task.project);
+        }
+
         res.status(200).json({ success: true, data: task });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -138,6 +181,9 @@ exports.updateTaskStatus = async (req, res) => {
                 type: 'task'
             });
         }
+
+        // Update progress
+        await updateProjectProgress(task.project);
 
         res.status(200).json({ success: true, data: task });
     } catch (error) {
@@ -221,6 +267,25 @@ exports.addComment = async (req, res) => {
         }
 
         res.status(201).json({ success: true, data: task });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Delete a task
+// @route   DELETE /api/tasks/:id
+// @access  Private (Admin/Manager only)
+exports.deleteTask = async (req, res) => {
+    try {
+        const task = await Task.findById(req.params.id);
+        if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
+
+        const projectId = task.project;
+        await Task.findByIdAndDelete(req.params.id);
+
+        await updateProjectProgress(projectId);
+
+        res.status(200).json({ success: true, message: 'Task deleted successfully' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

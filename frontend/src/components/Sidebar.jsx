@@ -1,11 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 
-export default function Sidebar() {
+export default function Sidebar({ isMobileOpen, setIsMobileOpen }) {
     const { role } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
+
+    // Tablet explicit toggle state
+    const [isTabletExpanded, setIsTabletExpanded] = useState(false);
 
     // Base items
     const defaultDashboardPath = role === 'admin' ? '/admin' : role === 'manager' ? '/dashboard' : '/employee-dashboard';
@@ -26,65 +29,124 @@ export default function Sidebar() {
     navItems.push({ name: 'Notifications', path: '/notifications', icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m-9-11a2 2 0 11-4 0 2 2 0 014 0z" /> });
 
     return (
-        <div className="w-16 md:w-[260px] bg-white border-r border-slate-200/50 flex flex-col py-6 shrink-0 z-20 transition-all duration-300 relative">
+        <aside
+            className={`fixed md:relative inset-y-0 left-0 bg-white border-r border-slate-200/60 flex flex-col pt-6 pb-6 shrink-0 z-40 transition-all duration-[0.3s] ease-in-out shadow-[4px_0_24px_rgba(0,0,0,0.02)] md:shadow-none
+            ${isMobileOpen ? 'translate-x-0 w-[260px]' : '-translate-x-full md:translate-x-0'} 
+            ${isTabletExpanded ? 'md:w-[260px]' : 'md:w-[76px]'}
+            lg:w-[76px] hover:lg:w-[260px]
+            group/sidebar`}
+        >
+            {/* Tablet Expand Toggle */}
+            <button
+                onClick={() => setIsTabletExpanded(!isTabletExpanded)}
+                className="hidden md:flex lg:hidden absolute -right-3 top-8 w-6 h-6 bg-white border border-slate-200 rounded-full items-center justify-center text-slate-400 hover:text-teal-600 hover:border-teal-300 shadow-sm z-50 transition-all"
+                title={isTabletExpanded ? "Collapse Sidebar" : "Expand Sidebar"}
+            >
+                <svg className={`w-3.5 h-3.5 transition-transform duration-300 ${isTabletExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                </svg>
+            </button>
 
             {/* Logo Section */}
-            <div className="flex items-center gap-3.5 px-6 mb-10 cursor-pointer group" onClick={() => navigate(defaultDashboardPath)}>
-                <div className="w-9 h-9 bg-gradient-to-br from-teal-400 to-teal-600 rounded-xl flex items-center justify-center text-white font-bold shadow-md shadow-teal-500/20 group-hover:shadow-teal-500/30 group-hover:-translate-y-0.5 transition-all duration-300 shrink-0">
+            <div className="flex items-center gap-3.5 px-4 mb-10 cursor-pointer group" onClick={() => navigate(defaultDashboardPath)}>
+                <div className="w-11 h-11 ml-0.5 bg-gradient-to-br from-teal-400 to-teal-600 rounded-xl flex items-center justify-center text-white font-bold shadow-md shadow-teal-500/20 group-hover:shadow-teal-500/30 group-hover:-translate-y-0.5 transition-transform duration-300 shrink-0">
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
                 </div>
-                <span className="font-heading font-bold text-slate-800 tracking-tight hidden md:block text-[19px]">
-                    {role === 'admin' ? 'Admin Panel' : role === 'manager' ? 'Manager Panel' : 'Employee Panel'}
-                </span>
+                <div className={`overflow-hidden transition-all duration-[0.3s] ease-in-out flex items-center
+                    max-w-0 lg:max-w-0 lg:group-hover/sidebar:max-w-[200px]
+                    ${isTabletExpanded ? 'md:max-w-[200px] lg:max-w-0' : 'md:max-w-0'}
+                    ${isMobileOpen ? 'max-w-[200px]' : ''}
+                `}>
+                    <span className="font-heading font-extrabold text-slate-800 tracking-tight text-[18px] ml-2 whitespace-nowrap block">
+                        {role === 'admin' ? 'Admin Panel' : role === 'manager' ? 'Manager Panel' : 'Employee Panel'}
+                    </span>
+                </div>
             </div>
 
             {/* Nav Items */}
-            <nav className="flex flex-col gap-1 w-full px-4">
+            <nav className="flex flex-col gap-1.5 px-3 w-full">
                 {navItems.map((item, i) => {
                     const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path));
                     return (
                         <div
                             key={i}
-                            onClick={() => navigate(item.path)}
-                            className={`group relative flex items-center md:justify-start justify-center w-full h-11 px-3.5 rounded-xl cursor-pointer transition-all duration-200 font-medium text-[13px] tracking-wide ${isActive ? 'bg-teal-50/50 text-teal-700 shadow-sm shadow-teal-100/50' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}`}
+                            onClick={() => {
+                                navigate(item.path);
+                                if (isMobileOpen) setIsMobileOpen(false);
+                            }}
+                            className={`group relative flex items-center w-full h-[46px] rounded-[10px] cursor-pointer transition-all duration-200 ${isActive ? 'bg-teal-50/70 text-teal-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
                         >
-                            <svg className={`shrink-0 w-5 h-5 md:mr-3.5 transition-colors ${isActive ? 'text-teal-600' : 'text-slate-400 group-hover:text-slate-700'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                {item.icon}
-                            </svg>
-                            <span className="hidden md:block transition-transform duration-200 group-hover:translate-x-0.5">{item.name}</span>
+                            {/* Active Indicator Line */}
+                            {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-teal-500 rounded-r-lg shadow-[0_0_8px_rgba(20,184,166,0.5)] z-10" />}
 
-                            {/* Mobile Tooltip */}
-                            <div className="md:hidden absolute left-[calc(100%+14px)] px-3 py-1.5 bg-slate-800 text-white text-xs font-semibold rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 shadow-lg">
-                                {item.name}
-                                <div className="absolute top-1/2 -left-1 -translate-y-1/2 border-4 border-transparent border-r-slate-800" />
+                            {/* Icon Wrapper */}
+                            <div className="w-[50px] shrink-0 flex items-center justify-center transition-transform duration-200 group-hover:scale-110">
+                                <svg className={`w-[22px] h-[22px] transition-colors ${isActive ? 'text-teal-600' : 'text-slate-400 group-hover:text-slate-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    {item.icon}
+                                </svg>
                             </div>
 
-                            {/* Active Indicator on Left */}
-                            {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-6 bg-teal-500 rounded-r-lg" />}
+                            {/* Label */}
+                            <div className={`overflow-hidden transition-all duration-[0.3s] ease-in-out flex items-center
+                                max-w-0 lg:max-w-0 lg:group-hover/sidebar:max-w-[180px]
+                                ${isTabletExpanded ? 'md:max-w-[180px] lg:max-w-0' : 'md:max-w-0'}
+                                ${isMobileOpen ? 'max-w-[180px]' : ''}
+                            `}>
+                                <span className={`text-[14px] font-bold tracking-wide transition-all whitespace-nowrap block ml-1 ${isActive ? 'text-teal-700' : 'text-slate-600'}`}>
+                                    {item.name}
+                                </span>
+                            </div>
+
+                            {/* Tooltip */}
+                            <div className={`hidden md:flex absolute left-[calc(100%+8px)] px-3 py-1.5 bg-slate-800/95 text-white text-[11px] font-bold uppercase tracking-wider rounded-[8px] opacity-0 pointer-events-none group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-[100] shadow-xl border border-slate-700 translate-x-1 group-hover:translate-x-0
+                                lg:group-hover/sidebar:!opacity-0 lg:group-hover/sidebar:!translate-x-1
+                                ${isTabletExpanded ? 'md:!opacity-0' : ''}
+                            `}>
+                                {item.name}
+                                <div className="absolute top-1/2 -left-[5px] -translate-y-1/2 border-4 border-transparent border-r-slate-800/95" />
+                            </div>
                         </div>
                     );
                 })}
             </nav>
 
-            <div className="mt-auto flex flex-col gap-2 w-full px-4 pt-5 border-t border-slate-100/60 mt-6">
-                {/* Settings */}
+            {/* Bottom Section (Settings) */}
+            <div className="mt-auto flex flex-col gap-2 w-full px-3 pt-5 border-t border-slate-100/60 transition-all">
                 {role === 'admin' && (
-                    <div onClick={() => navigate('/settings')} className="group relative flex items-center md:justify-start justify-center w-full h-11 px-3.5 rounded-xl cursor-pointer transition-all duration-200 font-medium text-[13px] tracking-wide text-slate-500 hover:bg-slate-50 hover:text-slate-900">
-                        <svg className="shrink-0 w-5 h-5 md:mr-3.5 text-slate-400 group-hover:text-slate-700 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        <span className="hidden md:block transition-transform duration-200 group-hover:translate-x-0.5">Settings</span>
+                    <div
+                        onClick={() => {
+                            navigate('/settings');
+                            if (isMobileOpen) setIsMobileOpen(false);
+                        }}
+                        className={`group relative flex items-center w-full h-[46px] rounded-[10px] cursor-pointer transition-all duration-200 text-slate-500 hover:bg-slate-50 hover:text-slate-800`}
+                    >
+                        <div className="w-[50px] shrink-0 flex items-center justify-center transition-transform duration-200 group-hover:scale-110">
+                            <svg className="w-[22px] h-[22px] transition-colors text-slate-400 group-hover:text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                        </div>
 
-                        {/* Mobile Tooltip */}
-                        <div className="md:hidden absolute left-[calc(100%+14px)] px-3 py-1.5 bg-slate-800 text-white text-xs font-semibold rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 shadow-lg">
+                        <div className={`overflow-hidden transition-all duration-[0.3s] ease-in-out flex items-center
+                            max-w-0 lg:max-w-0 lg:group-hover/sidebar:max-w-[180px]
+                            ${isTabletExpanded ? 'md:max-w-[180px] lg:max-w-0' : 'md:max-w-0'}
+                            ${isMobileOpen ? 'max-w-[180px]' : ''}
+                        `}>
+                            <span className="text-[14px] font-bold tracking-wide transition-all ml-1 whitespace-nowrap block">Settings</span>
+                        </div>
+
+                        {/* Tooltip */}
+                        <div className={`hidden md:flex absolute left-[calc(100%+8px)] px-3 py-1.5 bg-slate-800/95 text-white text-[11px] font-bold uppercase tracking-wider rounded-[8px] opacity-0 pointer-events-none group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-[100] shadow-xl border border-slate-700 translate-x-1 group-hover:translate-x-0
+                            lg:group-hover/sidebar:!opacity-0 lg:group-hover/sidebar:!translate-x-1
+                            ${isTabletExpanded ? 'md:!opacity-0' : ''}
+                        `}>
                             Settings
-                            <div className="absolute top-1/2 -left-1 -translate-y-1/2 border-4 border-transparent border-r-slate-800" />
+                            <div className="absolute top-1/2 -left-[5px] -translate-y-1/2 border-4 border-transparent border-r-slate-800/95" />
                         </div>
                     </div>
                 )}
             </div>
-        </div>
+        </aside>
     );
 }
