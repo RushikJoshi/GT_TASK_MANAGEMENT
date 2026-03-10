@@ -13,7 +13,7 @@ exports.getEmployees = async (req, res) => {
         }
 
         const employees = await User.find(filter)
-            .select('fullName email avatar role reportingManager _id')
+            .select('fullName email avatar avatarMime role reportingManager _id')
             .sort({ fullName: 1 });
 
         res.status(200).json({ success: true, data: employees });
@@ -28,8 +28,9 @@ exports.getEmployees = async (req, res) => {
 exports.getAssignableUsers = async (req, res) => {
     try {
         const users = await User.find({ role: { $ne: 'admin' }, status: 'ACTIVE' })
-            .select('fullName email avatar role _id')
+            .select('fullName email avatar avatarMime role _id')
             .sort({ fullName: 1 });
+
         res.status(200).json({ success: true, data: users });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

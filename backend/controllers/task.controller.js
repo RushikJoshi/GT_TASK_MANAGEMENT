@@ -222,7 +222,8 @@ exports.getTaskById = async (req, res) => {
             .populate('comments.user', 'fullName email avatar')
             .populate('reassignmentHistory.previousAssignee', 'fullName')
             .populate('reassignmentHistory.newAssignee', 'fullName')
-            .populate('reassignmentHistory.reassignedBy', 'fullName');
+            .populate('reassignmentHistory.reassignedBy', 'fullName')
+            .populate('attachments.uploadedBy', 'fullName email avatar');
 
         if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
 
@@ -352,3 +353,49 @@ exports.reassignTask = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+// @desc    Add attachment to task
+// @route   POST /api/tasks/:id/attachments
+// @access  Private
+exports.addAttachment = async (req, res) => {
+    try {
+        const { name, data, mime } = req.body;
+        if (!name || !data || !mime) {
+            return res.status(400).json({ success: false, message: 'Invalid attachment data' });
+        }
+
+        const task = await Task.findById(req.params.id);
+        if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
+
+        task.attachments.push({
+            name,
+            data,
+            mime,
+            uploadedBy: req.user._id,
+        });
+
+        await task.save();
+
+        const Activity = require('../models/activity.model');
+        await Activity.create({
+            user: req.user._id,
+            action: `attached a file to task`,
+            entityType: 'task',
+            entityId: task._id,
+            targetName: task.title
+        });
+
+        // re-fetch to get populated fields
+        const updatedTask = await Task.findById(task._id)
+            .populate('project', 'name')
+            .populate('assignedTo', 'fullName email avatar')
+            .populate('createdBy', 'fullName email avatar')
+            .populate('comments.user', 'fullName email avatar')
+            .populate('attachments.uploadedBy', 'fullName email avatar');
+
+        res.status(200).json({ success: true, data: updatedTask });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
