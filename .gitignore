@@ -14,7 +14,7 @@ node_modules/
 # .env.example is SAFE to commit — keep it
 
 # ----- Build Output -----
-dist/
+
 build/
 .vite/
 
