@@ -133,24 +133,37 @@ export default function Activity() {
                                                     </div>
 
                                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5">
-                                                        <span className="text-[14px] font-medium text-slate-500">
-                                                            {isStatus ? 'migrated' : actionText.split(' ').slice(0, 2).join(' ')}
-                                                        </span>
-
-                                                        {isStatus ? (
-                                                            <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ring-1 shadow-sm ${getStatusStyle(act.action)}`}>
-                                                                {act.action.split(' ').pop()}
+                                                        {act.action.toLowerCase().includes('reassign') ? (
+                                                            <div className="w-full">
+                                                                <span className="text-[14px] font-medium text-slate-500">
+                                                                    {actionText}
+                                                                </span>
+                                                                <p className="text-[13px] font-black text-slate-800 mt-1 border-b-2 border-slate-100 inline-block">
+                                                                    {act.targetName || 'Task'}
+                                                                </p>
                                                             </div>
                                                         ) : (
-                                                            <span className="text-[14px] font-black text-slate-800 border-b-2 border-slate-100 group-hover:border-teal-300 transition-all cursor-default">
-                                                                {act.targetName || 'Workspace'}
-                                                            </span>
-                                                        )}
+                                                            <>
+                                                                <span className="text-[14px] font-medium text-slate-500">
+                                                                    {isStatus ? 'migrated' : actionText.split(' ').slice(0, 2).join(' ')}
+                                                                </span>
 
-                                                        {isStatus && (
-                                                            <span className="text-[14px] font-medium text-slate-500">
-                                                                &bull; {act.targetName}
-                                                            </span>
+                                                                {isStatus ? (
+                                                                    <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ring-1 shadow-sm ${getStatusStyle(act.action)}`}>
+                                                                        {act.action.split(' ').pop()}
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-[14px] font-black text-slate-800 border-b-2 border-slate-100 group-hover:border-teal-300 transition-all cursor-default">
+                                                                        {act.targetName || 'Workspace'}
+                                                                    </span>
+                                                                )}
+
+                                                                {isStatus && (
+                                                                    <span className="text-[14px] font-medium text-slate-500">
+                                                                        &bull; {act.targetName}
+                                                                    </span>
+                                                                )}
+                                                            </>
                                                         )}
                                                     </div>
                                                 </div>

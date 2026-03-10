@@ -82,7 +82,7 @@ export default function Projects() {
 
     const fetchEmployees = async () => {
         try {
-            const res = await axiosInstance.get('/users/employees');
+            const res = await axiosInstance.get('/users/assignable');
             if (res.data.success) setEmployees(res.data.data);
         } catch (err) {
             console.error(err);
@@ -398,6 +398,7 @@ export default function Projects() {
                                         <input
                                             type="date"
                                             value={formData.deadline}
+                                            min={new Date().toLocaleDateString('en-CA')}
                                             onChange={e => setFormData({ ...formData, deadline: e.target.value })}
                                             className="w-full h-14 px-6 border border-slate-200 rounded-2xl text-[15px] font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-teal-500/10 focus:border-teal-500 transition-all shadow-sm bg-white hover:border-teal-200"
                                             required
@@ -640,6 +641,7 @@ export default function Projects() {
                                         <input
                                             type="date"
                                             value={editForm.deadline}
+                                            min={new Date().toLocaleDateString('en-CA')}
                                             onChange={e => setEditForm(p => ({ ...p, deadline: e.target.value }))}
                                             className="w-full h-12 px-5 border border-slate-200 rounded-2xl text-[14px] font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-teal-500/10 focus:border-teal-500 transition-all shadow-sm bg-white hover:border-teal-200"
                                         />

@@ -14,6 +14,7 @@ router.post('/', authorizeRoles('admin', 'manager'), taskController.createTask);
 router.put('/:taskId/status', taskController.updateTaskStatus);
 router.put('/:id/status', taskController.updateTaskStatus);
 router.put('/:id', authorizeRoles('admin', 'manager'), taskController.updateTask);
+router.put('/:id/reassign', taskController.reassignTask);
 router.delete('/:id', authorizeRoles('admin', 'manager'), taskController.deleteTask);
 
 router.get('/:id', taskController.getTaskById);

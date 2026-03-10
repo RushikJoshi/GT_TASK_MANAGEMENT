@@ -297,7 +297,11 @@ export default function ProjectDetails() {
                                     {tasks.map(task => {
                                         const subs = taskSubtasks[task._id] || [];
                                         const isExp = !!expandedTasks[task._id];
-                                        const taskOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'Done' && task.status !== 'Completed';
+                                        const now = new Date();
+                                        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                                        const due = new Date(task.dueDate);
+                                        const dueStr = task.dueDate ? `${due.getUTCFullYear()}-${String(due.getUTCMonth() + 1).padStart(2, '0')}-${String(due.getUTCDate()).padStart(2, '0')}` : null;
+                                        const taskOverdue = dueStr && dueStr < todayStr && task.status !== 'Done' && task.status !== 'Completed';
                                         return (
                                             <React.Fragment key={task._id}>
                                                 {/* ── Parent task row ── */}
@@ -377,7 +381,11 @@ export default function ProjectDetails() {
                                                             </tr>
                                                         )}
                                                         {subs.map(sub => {
-                                                            const subOverdue = sub.dueDate && new Date(sub.dueDate) < new Date();
+                                                            const now = new Date();
+                                                            const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                                                            const due = new Date(sub.dueDate);
+                                                            const sDueStr = sub.dueDate ? `${due.getUTCFullYear()}-${String(due.getUTCMonth() + 1).padStart(2, '0')}-${String(due.getUTCDate()).padStart(2, '0')}` : null;
+                                                            const subOverdue = sDueStr && sDueStr < todayStr;
                                                             return (
                                                                 <tr key={sub._id} className="border-b border-slate-50 bg-white hover:bg-slate-50/30 transition-colors">
                                                                     <td className="pl-12 py-3 w-10" />
@@ -485,7 +493,7 @@ export default function ProjectDetails() {
                                 <div className="grid grid-cols-2 gap-7">
                                     <div>
                                         <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-2.5">Due Date</label>
-                                        <input type="date" value={taskForm.dueDate} onChange={e => setTaskForm({ ...taskForm, dueDate: e.target.value })} className="w-full h-12 px-5 border border-slate-200 rounded-2xl text-[14px] font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-teal-500/10 focus:border-teal-500 transition-all shadow-sm bg-white hover:border-teal-200" />
+                                        <input type="date" value={taskForm.dueDate} min={new Date().toLocaleDateString('en-CA')} onChange={e => setTaskForm({ ...taskForm, dueDate: e.target.value })} className="w-full h-12 px-5 border border-slate-200 rounded-2xl text-[14px] font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-teal-500/10 focus:border-teal-500 transition-all shadow-sm bg-white hover:border-teal-200" />
                                     </div>
                                     <div className="relative custom-dropdown-container">
                                         <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-2.5">Priority</label>

@@ -22,4 +22,7 @@ router.post('/:id/comments', ctrl.addComment);
 // Checklist item toggle
 router.patch('/:id/checklist/:itemId', ctrl.updateChecklistItem);
 
+// Reassign
+router.post('/:id/reassign', ctrl.reassignQuickTask);
+
 module.exports = router;

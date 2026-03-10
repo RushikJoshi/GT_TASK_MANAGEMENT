@@ -1,5 +1,7 @@
 const QuickTask = require('../models/quickTask.model');
 const Notification = require('../models/notification.model');
+const Activity = require('../models/activity.model');
+const User = require('../models/user.model');
 
 // ────────────────────────────────────────────────────────────────────────────
 // Helper
@@ -26,7 +28,9 @@ const buildFilter = (req) => {
         filter.status = { $ne: 'DONE' };
     }
     if (view === 'overdue') {
-        filter.dueDate = { $lt: new Date() };
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        filter.dueDate = { $lt: today };
         filter.status = { $ne: 'DONE' };
     }
 
@@ -58,6 +62,15 @@ exports.createQuickTask = async (req, res) => {
 
         if (!title || title.trim() === '') {
             return res.status(400).json({ success: false, message: 'Title is required' });
+        }
+
+        if (dueDate) {
+            const date = new Date(dueDate);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (date < today) {
+                return res.status(400).json({ success: false, message: 'Tasks cannot be created with past dates.' });
+            }
         }
 
         const task = await QuickTask.create({
@@ -135,7 +148,10 @@ exports.getQuickTaskById = async (req, res) => {
         const task = await QuickTask.findById(req.params.id)
             .populate('createdBy', 'fullName email avatar')
             .populate('assignedTo', 'fullName email avatar')
-            .populate('comments.user', 'fullName email avatar');
+            .populate('comments.user', 'fullName email avatar')
+            .populate('reassignmentHistory.previousAssignee', 'fullName')
+            .populate('reassignmentHistory.newAssignee', 'fullName')
+            .populate('reassignmentHistory.reassignedBy', 'fullName');
 
         if (!task) return res.status(404).json({ success: false, message: 'Quick task not found' });
 
@@ -176,6 +192,15 @@ exports.updateQuickTask = async (req, res) => {
 
         allowed.forEach(field => {
             if (req.body[field] !== undefined) {
+                if (field === 'dueDate' && req.body[field]) {
+                    const date = new Date(req.body[field]);
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    // Only validate if date is changed and it's not the same as before
+                    if (date < today && (!task.dueDate || date.getTime() !== new Date(task.dueDate).getTime())) {
+                        throw new Error('Tasks cannot be created with past dates.');
+                    }
+                }
                 task[field] = req.body[field];
             }
         });
@@ -268,12 +293,80 @@ exports.updateChecklistItem = async (req, res) => {
 };
 
 // ────────────────────────────────────────────────────────────────────────────
+// REASSIGN
+// ────────────────────────────────────────────────────────────────────────────
+exports.reassignQuickTask = async (req, res) => {
+    try {
+        const { newAssigneeId, reason } = req.body;
+        if (!newAssigneeId) {
+            return res.status(400).json({ success: false, message: 'New assignee is required' });
+        }
+
+        const task = await QuickTask.findById(req.params.id);
+        if (!task) return res.status(404).json({ success: false, message: 'Quick task not found' });
+
+        if (task.status === 'DONE') {
+            return res.status(400).json({ success: false, message: 'Cannot reassign a completed task' });
+        }
+
+        const oldAssigneeId = task.assignedTo;
+        const oldUser = oldAssigneeId ? await User.findById(oldAssigneeId) : null;
+        const newUser = await User.findById(newAssigneeId);
+
+        if (!newUser) return res.status(404).json({ success: false, message: 'New assignee not found' });
+
+        // Record history
+        task.reassignmentHistory.push({
+            previousAssignee: oldAssigneeId || null,
+            newAssignee: newAssigneeId,
+            reassignedBy: req.user._id,
+            reason: reason || 'No reason provided',
+            timestamp: new Date()
+        });
+
+        task.assignedTo = newAssigneeId;
+        await task.save();
+
+        // Activity Log
+        await Activity.create({
+            user: req.user._id,
+            action: `reassigned task to ${newUser.fullName}`,
+            entityType: 'task',
+            entityId: task._id,
+            targetName: task.title
+        });
+
+        // Notification to new assignee
+        await Notification.create({
+            user: newAssigneeId,
+            title: 'Task Reassigned to You',
+            message: `You have been reassigned the task: "${task.title}" by ${req.user.fullName}. Reason: ${reason || 'Not specified'}`,
+            type: 'task'
+        });
+
+        const populated = await QuickTask.findById(task._id)
+            .populate('createdBy', 'fullName email avatar')
+            .populate('assignedTo', 'fullName email avatar')
+            .populate('comments.user', 'fullName email avatar')
+            .populate('reassignmentHistory.previousAssignee', 'fullName')
+            .populate('reassignmentHistory.newAssignee', 'fullName')
+            .populate('reassignmentHistory.reassignedBy', 'fullName');
+
+        return res.status(200).json({ success: true, message: 'Task successfully reassigned.', data: populated });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// ────────────────────────────────────────────────────────────────────────────
 // GET STATS (for dashboard view counts)
 // ────────────────────────────────────────────────────────────────────────────
 exports.getQuickTaskStats = async (req, res) => {
     try {
         const userId = req.user._id;
         const now = new Date();
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
         const in7 = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
         const baseFilter = req.user.role === 'employee'
@@ -285,7 +378,7 @@ exports.getQuickTaskStats = async (req, res) => {
             QuickTask.countDocuments({ ...baseFilter, createdBy: userId }),
             QuickTask.countDocuments({ ...baseFilter, assignedTo: userId }),
             QuickTask.countDocuments({ ...baseFilter, dueDate: { $gte: now, $lte: in7 }, status: { $ne: 'DONE' } }),
-            QuickTask.countDocuments({ ...baseFilter, dueDate: { $lt: now }, status: { $ne: 'DONE' } }),
+            QuickTask.countDocuments({ ...baseFilter, dueDate: { $lt: today }, status: { $ne: 'DONE' } }),
             QuickTask.countDocuments({ ...baseFilter, status: 'TODO' }),
             QuickTask.countDocuments({ ...baseFilter, status: 'IN_PROGRESS' }),
             QuickTask.countDocuments({ ...baseFilter, status: 'DONE' }),

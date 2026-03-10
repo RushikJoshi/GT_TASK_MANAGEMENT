@@ -22,12 +22,18 @@ const statusColor = (s) => {
     return 'bg-slate-50 text-slate-600 border-slate-200';
 };
 
-// ─── Overdue helper ───────────────────────────────────────────────────────────
 const isOverdue = (dateStr, status) => {
     if (!dateStr) return false;
     const sl = (status || '').toLowerCase();
     if (sl === 'done' || sl === 'completed') return false;
-    return new Date(dateStr) < new Date();
+
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    const due = new Date(dateStr);
+    const dueStr = `${due.getUTCFullYear()}-${String(due.getUTCMonth() + 1).padStart(2, '0')}-${String(due.getUTCDate()).padStart(2, '0')}`;
+
+    return dueStr < todayStr;
 };
 
 // ─── Subtask row (read-write for employee, read-only for manager/admin) ───────
@@ -499,6 +505,7 @@ function TaskRow({ task, isEmployee, token, onNavigate }) {
                                     {/* Due date */}
                                     <input
                                         type="date"
+                                        min={new Date().toLocaleDateString('en-CA')}
                                         className="bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-[12px] font-bold text-slate-600 outline-none focus:border-indigo-400 transition-all cursor-pointer"
                                         value={newSub.dueDate}
                                         onChange={e => setNewSub(p => ({ ...p, dueDate: e.target.value }))}

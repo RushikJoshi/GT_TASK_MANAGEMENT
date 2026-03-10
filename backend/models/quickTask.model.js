@@ -60,7 +60,15 @@ const quickTaskSchema = new mongoose.Schema({
     // Attachments (stored as URLs/names)
     attachments: [{ type: String }],
 
-    isArchived: { type: Boolean, default: false }
+    isArchived: { type: Boolean, default: false },
+
+    reassignmentHistory: [{
+        previousAssignee: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        newAssignee: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        reassignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        reason: { type: String },
+        timestamp: { type: Date, default: Date.now }
+    }]
 
 }, { timestamps: true });
 

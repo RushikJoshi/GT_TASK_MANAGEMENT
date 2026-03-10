@@ -31,7 +31,14 @@ const CATEGORY_ICON = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
-const isOverdue = (t) => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'DONE';
+const isOverdue = (t) => {
+    if (!t.dueDate || (t.status === 'DONE' || t.status === 'Done' || t.status === 'Completed')) return false;
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const due = new Date(t.dueDate);
+    const dueStr = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')}`;
+    return dueStr < todayStr;
+};
 
 // ─── Empty form ─────────────────────────────────────────────────────────────
 const emptyForm = () => ({
@@ -75,20 +82,22 @@ export default function QuickTasks() {
 
     // ── error state ───────────────────────────────────────────────────────
     const [error, setError] = useState('');
+    const [successMessage, setSuccessMessage] = useState('');
 
-    // ── users for assign dropdown ─────────────────────────────────────────
+    // ── reassignment state ────────────────────────────────────────────────
+    const [showReassignDropdown, setShowReassignDropdown] = useState(false);
+    const [reassigning, setReassigning] = useState(false);
     const [users, setUsers] = useState([]);
+    const [reassignReason, setReassignReason] = useState('');
 
-    // ── fetch users list (admin/manager only — employees can only self-assign) ─
+    // ── fetch assignable users ──
     useEffect(() => {
-        if (user?.role !== 'employee') {
-            axiosInstance.get('/admin/users')
-                .then(r => {
-                    if (r.data.success) setUsers(r.data.data);
-                })
-                .catch(() => { });
-        }
-    }, [user]);
+        axiosInstance.get('/users/assignable')
+            .then(r => {
+                if (r.data.success) setUsers(r.data.data);
+            })
+            .catch(() => { });
+    }, []);
 
     // ─── Fetch tasks ─────────────────────────────────────────────────────
     const fetchTasks = useCallback(async (page = 1) => {
@@ -187,7 +196,18 @@ export default function QuickTasks() {
     // ─── Save task ────────────────────────────────────────────────────────
     const handleSave = async (e) => {
         e.preventDefault();
-        if (!formData.title.trim()) return; // client‑side guard
+        if (!formData.title.trim()) return;
+
+        // Date Validation
+        if (formData.dueDate) {
+            const date = new Date(formData.dueDate);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (date < today) {
+                alert('Tasks cannot be created with past dates.');
+                return;
+            }
+        }
         setSaving(true);
         try {
             const payload = {
@@ -205,6 +225,8 @@ export default function QuickTasks() {
             }
 
             if (res.success) {
+                setSuccessMessage(editTask ? 'Task updated successfully!' : 'Task created successfully!');
+                setTimeout(() => setSuccessMessage(''), 3000);
                 closeForm();
                 fetchTasks(1);
                 fetchStats();
@@ -271,6 +293,31 @@ export default function QuickTasks() {
         setCommentSaving(false);
     };
 
+    // ─── Reassign task ────────────────────────────────────────────────────
+    const handleReassign = async (newAssigneeId) => {
+        if (!detailTask) return;
+        if (!reassignReason.trim()) {
+            alert('Please provide a reason for reassignment');
+            return;
+        }
+        setReassigning(true);
+        try {
+            const res = await quickTaskApi.reassign(detailTask._id, newAssigneeId, reassignReason);
+            if (res.success) {
+                setDetailTask(res.data);
+                setTasks(p => p.map(t => t._id === detailTask._id ? res.data : t));
+                setSuccessMessage('Task successfully reassigned.');
+                setShowReassignDropdown(false);
+                setReassignReason('');
+                setTimeout(() => setSuccessMessage(''), 3000);
+            }
+        } catch (err) {
+            alert(err.response?.data?.message || 'Failed to reassign task');
+        } finally {
+            setReassigning(false);
+        }
+    };
+
     // ─── checklist progress ───────────────────────────────────────────────
     const checklistProgress = (checklist) => {
         if (!checklist?.length) return 0;
@@ -300,6 +347,18 @@ export default function QuickTasks() {
                     </svg>
                     {error}
                     <button onClick={() => fetchTasks(1)} className="ml-auto text-xs font-bold text-red-600 underline hover:text-red-800">Retry</button>
+                </div>
+            )}
+
+            {/* ── SUCCESS TOAST ─────────────────────────────────────────── */}
+            {successMessage && (
+                <div className="fixed top-24 right-8 z-[100] animate-in fade-in slide-in-from-top-4 duration-300">
+                    <div className="bg-emerald-600 text-white px-6 py-3 rounded-2xl shadow-xl shadow-emerald-500/20 flex items-center gap-3">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span className="text-sm font-bold tracking-tight">{successMessage}</span>
+                    </div>
                 </div>
             )}
 
@@ -519,19 +578,16 @@ export default function QuickTasks() {
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Assign To</label>
-                                    {user?.role === 'employee' ? (
-                                        <input type="text" disabled value={user.fullName || user.name || '(Only you)'} className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-100 text-slate-500" />
-                                    ) : (
-                                        <select name="assignedTo" value={formData.assignedTo} onChange={handleFormChange}
-                                            className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-slate-50">
-                                            <option value="">Unassigned</option>
-                                            {users.map(u => <option key={u._id} value={u._id}>{u.fullName}</option>)}
-                                        </select>
-                                    )}
+                                    <select name="assignedTo" value={formData.assignedTo} onChange={handleFormChange}
+                                        className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-slate-50">
+                                        <option value="">Unassigned</option>
+                                        {users.filter(u => u.role?.toLowerCase() !== 'admin').map(u => <option key={u._id} value={u._id}>{u.fullName} ({u.role})</option>)}
+                                    </select>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Due Date</label>
                                     <input type="date" name="dueDate" value={formData.dueDate} onChange={handleFormChange}
+                                        min={new Date().toLocaleDateString('en-CA')}
                                         className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-slate-50" />
                                 </div>
                             </div>
@@ -541,6 +597,7 @@ export default function QuickTasks() {
                                 <div>
                                     <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Reminder Time</label>
                                     <input type="datetime-local" name="reminderTime" value={formData.reminderTime} onChange={handleFormChange}
+                                        min={new Date().toLocaleString('sv-SE', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(' ', 'T')}
                                         className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-slate-50" />
                                 </div>
                                 <div>
@@ -596,9 +653,9 @@ export default function QuickTasks() {
 
             {/* ══ DETAIL MODAL ══════════════════════════════════════════ */}
             {detailTask && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setDetailTask(null)}>
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => { setDetailTask(null); setShowReassignDropdown(false); }}>
                     <div
-                        className="bg-white w-full sm:w-[500px] max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+                        className="bg-white w-full sm:w-[500px] max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden relative"
                         onClick={e => e.stopPropagation()}
                     >
                         {/* Detail Header */}
@@ -611,11 +668,52 @@ export default function QuickTasks() {
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setShowReassignDropdown(!showReassignDropdown)}
+                                    className="text-xs px-3 py-1.5 bg-teal-50 text-teal-600 rounded-lg font-semibold hover:bg-teal-100 transition flex items-center gap-1.5"
+                                >
+                                    🔄 Reassign
+                                </button>
                                 <button onClick={() => openEdit(detailTask)} className="text-xs px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg font-semibold hover:bg-blue-100 transition">Edit</button>
                                 <button onClick={() => { setDeleteTarget(detailTask); setDetailTask(null); }} className="text-xs px-3 py-1.5 bg-red-50 text-red-500 rounded-lg font-semibold hover:bg-red-100 transition">Delete</button>
                                 <button onClick={() => setDetailTask(null)} className="w-7 h-7 flex items-center justify-center rounded-full bg-slate-200 text-slate-500 hover:bg-slate-300 text-sm transition">✕</button>
                             </div>
                         </div>
+
+                        {/* Reassign Dropdown Overlay */}
+                        {showReassignDropdown && (
+                            <div className="absolute top-[70px] right-5 z-[60] w-72 bg-white border border-slate-100 rounded-2xl shadow-2xl p-4 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-1 mb-3">Reassign Reason</h4>
+                                <textarea
+                                    value={reassignReason}
+                                    onChange={(e) => setReassignReason(e.target.value)}
+                                    placeholder="Reason for reassignment..."
+                                    className="w-full p-2.5 text-[12px] border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-100 bg-slate-50 resize-none mb-4"
+                                    rows={2}
+                                />
+
+                                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-1 mb-2">Select New Assignee</h4>
+                                <div className="max-h-48 overflow-y-auto space-y-1">
+                                    {users.filter(u => u._id !== detailTask.assignedTo?._id).map(u => (
+                                        <button
+                                            key={u._id}
+                                            disabled={reassigning}
+                                            onClick={() => handleReassign(u._id)}
+                                            className="w-full flex items-center gap-3 p-2 rounded-xl transition-all group text-left hover:bg-teal-50"
+                                        >
+                                            <div className="w-7 h-7 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center text-[10px] font-bold uppercase group-hover:bg-teal-600 group-hover:text-white transition-colors">
+                                                {u.fullName?.[0]}
+                                            </div>
+                                            <div>
+                                                <div className="text-[13px] font-bold text-slate-700">{u.fullName}</div>
+                                                <div className="text-[10px] text-slate-400 capitalize">{u.role}</div>
+                                            </div>
+                                        </button>
+                                    ))}
+                                    {users.length === 0 && <p className="text-[11px] text-slate-400 text-center py-2 italic">No other users found</p>}
+                                </div>
+                            </div>
+                        )}
 
                         {/* Detail Body */}
                         <div className="flex-1 overflow-y-auto p-5 space-y-5">
@@ -649,86 +747,129 @@ export default function QuickTasks() {
                                 <div className="bg-slate-50 rounded-xl p-3">
                                     <div className="text-xs text-slate-400 font-medium mb-0.5">Assigned To</div>
                                     <div className="font-semibold text-slate-700">{detailTask.assignedTo?.fullName || 'Unassigned'}</div>
-                                </div>
-                                {detailTask.reminderTime && (
-                                    <div className="bg-amber-50 rounded-xl p-3">
-                                        <div className="text-xs text-amber-500 font-medium mb-0.5">🔔 Reminder</div>
-                                        <div className="font-semibold text-slate-700 text-xs">{fmt(detailTask.reminderTime)} — {detailTask.reminderType}</div>
-                                    </div>
-                                )}
-                                <div className="bg-slate-50 rounded-xl p-3">
-                                    <div className="text-xs text-slate-400 font-medium mb-0.5">Created By</div>
-                                    <div className="font-semibold text-slate-700">{detailTask.createdBy?.fullName || '—'}</div>
+                                    {detailTask.reassignmentHistory?.length > 0 && (
+                                        <div className="mt-1 flex items-center gap-1">
+                                            <span className="text-[9px] font-black text-amber-600 bg-amber-50 px-1 py-0.5 rounded border border-amber-100 uppercase tracking-tighter">Reassigned</span>
+                                            <span className="text-[9px] font-bold text-slate-400">by {detailTask.reassignmentHistory[detailTask.reassignmentHistory.length - 1].reassignedBy?.fullName || 'System'}</span>
+                                        </div>
+                                    )}
+                                    {detailTask.reassignmentHistory?.length > 0 && (
+                                        <p className="text-[10px] text-slate-500 italic mt-2 bg-white/50 p-2 rounded border border-slate-100/50 line-clamp-1">
+                                            "{detailTask.reassignmentHistory[detailTask.reassignmentHistory.length - 1].reason}"
+                                        </p>
+                                    )}
                                 </div>
                             </div>
-
-                            {/* Description */}
-                            {detailTask.description && (
-                                <div>
-                                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Description</h4>
-                                    <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">{detailTask.description}</p>
+                            {detailTask.reminderTime && (
+                                <div className="bg-amber-50 rounded-xl p-3">
+                                    <div className="text-xs text-amber-500 font-medium mb-0.5">🔔 Reminder</div>
+                                    <div className="font-semibold text-slate-700 text-xs">{fmt(detailTask.reminderTime)} — {detailTask.reminderType}</div>
                                 </div>
                             )}
+                            <div className="bg-slate-50 rounded-xl p-3">
+                                <div className="text-xs text-slate-400 font-medium mb-0.5">Created By</div>
+                                <div className="font-semibold text-slate-700">{detailTask.createdBy?.fullName || '—'}</div>
+                            </div>
+                        </div>
 
-                            {/* Checklist */}
-                            {detailTask.checklist?.length > 0 && (
-                                <div>
-                                    <div className="flex items-center justify-between mb-2">
-                                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Checklist</h4>
-                                        <span className="text-xs font-semibold text-teal-600">{checklistProgress(detailTask.checklist)}%</span>
-                                    </div>
-                                    {/* Progress bar */}
-                                    <div className="h-1.5 bg-slate-100 rounded-full mb-3">
-                                        <div className="h-1.5 bg-teal-500 rounded-full transition-all" style={{ width: `${checklistProgress(detailTask.checklist)}%` }} />
-                                    </div>
-                                    <div className="space-y-2">
-                                        {detailTask.checklist.map(item => (
-                                            <label key={item._id} className="flex items-center gap-3 bg-slate-50 px-3 py-2.5 rounded-xl border border-slate-200 cursor-pointer hover:bg-teal-50 transition">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={item.completed}
-                                                    onChange={e => toggleChecklist(detailTask._id, item._id, e.target.checked)}
-                                                    className="accent-teal-600 w-4 h-4"
-                                                />
-                                                <span className={`text-sm flex-1 ${item.completed ? 'line-through text-slate-400' : 'text-slate-700'}`}>{item.text}</span>
-                                                {item.completed && <span className="text-emerald-500 text-xs font-bold">✓</span>}
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Comments */}
+                        {/* Description */}
+                        {detailTask.description && (
                             <div>
-                                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Comments ({detailTask.comments?.length || 0})</h4>
-                                <div className="space-y-3 mb-3">
-                                    {(detailTask.comments || []).map((c, i) => (
-                                        <div key={i} className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <div className="w-6 h-6 rounded-full bg-teal-500 flex items-center justify-center text-white text-xs font-bold">
-                                                    {c.user?.fullName?.[0] || '?'}
-                                                </div>
-                                                <span className="text-xs font-semibold text-slate-700">{c.user?.fullName || 'User'}</span>
-                                                <span className="text-xs text-slate-400 ml-auto">{new Date(c.createdAt).toLocaleDateString()}</span>
+                                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Description</h4>
+                                <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">{detailTask.description}</p>
+                            </div>
+                        )}
+
+                        {/* Checklist */}
+                        {detailTask.checklist?.length > 0 && (
+                            <div>
+                                <div className="flex items-center justify-between mb-2">
+                                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Checklist</h4>
+                                    <span className="text-xs font-semibold text-teal-600">{checklistProgress(detailTask.checklist)}%</span>
+                                </div>
+                                {/* Progress bar */}
+                                <div className="h-1.5 bg-slate-100 rounded-full mb-3">
+                                    <div className="h-1.5 bg-teal-500 rounded-full transition-all" style={{ width: `${checklistProgress(detailTask.checklist)}%` }} />
+                                </div>
+                                <div className="space-y-2">
+                                    {detailTask.checklist.map(item => (
+                                        <label key={item._id} className="flex items-center gap-3 bg-slate-50 px-3 py-2.5 rounded-xl border border-slate-200 cursor-pointer hover:bg-teal-50 transition">
+                                            <input
+                                                type="checkbox"
+                                                checked={item.completed}
+                                                onChange={e => toggleChecklist(detailTask._id, item._id, e.target.checked)}
+                                                className="accent-teal-600 w-4 h-4"
+                                            />
+                                            <span className={`text-sm flex-1 ${item.completed ? 'line-through text-slate-400' : 'text-slate-700'}`}>{item.text}</span>
+                                            {item.completed && <span className="text-emerald-500 text-xs font-bold">✓</span>}
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Comments */}
+                        <div className="mb-6 pt-4 border-t border-slate-100">
+                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Comments ({detailTask.comments?.length || 0})</h4>
+                            <div className="space-y-3 mb-3">
+                                {(detailTask.comments || []).map((c, i) => (
+                                    <div key={i} className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <div className="w-6 h-6 rounded-full bg-teal-500 flex items-center justify-center text-white text-xs font-bold">
+                                                {c.user?.fullName?.[0] || '?'}
                                             </div>
-                                            <p className="text-sm text-slate-600 pl-8">{c.text}</p>
+                                            <span className="text-xs font-semibold text-slate-700">{c.user?.fullName || 'User'}</span>
+                                            <span className="text-xs text-slate-400 ml-auto">{new Date(c.createdAt).toLocaleDateString()}</span>
+                                        </div>
+                                        <p className="text-sm text-slate-600 pl-8">{c.text}</p>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="flex gap-2">
+                                <input
+                                    value={commentText}
+                                    onChange={e => setCommentText(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && handleAddComment()}
+                                    placeholder="Write a comment..."
+                                    className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-slate-50"
+                                />
+                                <button onClick={handleAddComment} disabled={commentSaving || !commentText.trim()} className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg font-semibold hover:bg-teal-700 disabled:opacity-50 transition">
+                                    {commentSaving ? '...' : 'Post'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* History */}
+                        {detailTask.reassignmentHistory?.length > 0 && (
+                            <div className="pt-4 border-t border-slate-100">
+                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Task Timeline</h4>
+                                <div className="space-y-4">
+                                    {[...detailTask.reassignmentHistory].reverse().map((h, i) => (
+                                        <div key={i} className="flex gap-3 relative before:absolute before:left-3 before:top-8 before:bottom-0 before:w-[1.5px] before:bg-slate-50 last:before:hidden">
+                                            <div className="w-6 h-6 rounded-lg bg-teal-50 border border-teal-100 flex items-center justify-center shrink-0 z-10">
+                                                <svg className="w-3 h-3 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m4-4l-4-4" /></svg>
+                                            </div>
+                                            <div className="flex-1 pb-2">
+                                                <div className="flex justify-between items-baseline mb-1">
+                                                    <span className="text-[11px] font-black text-slate-800 uppercase tracking-tight">{h.reassignedBy?.fullName || 'System'}</span>
+                                                    <span className="text-[9px] font-black text-slate-300 uppercase">{new Date(h.timestamp || h.createdAt).toLocaleDateString()}</span>
+                                                </div>
+                                                <div className="bg-white border border-slate-100/80 rounded-xl p-2.5 shadow-sm">
+                                                    <p className="text-[12px] text-slate-500 font-medium mb-1.5 flex items-center gap-2">
+                                                        <span>{h.previousAssignee?.fullName || 'Unassigned'}</span>
+                                                        <svg className="w-3 h-3 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                                                        <span className="font-bold text-teal-600">{h.newAssignee?.fullName || 'User'}</span>
+                                                    </p>
+                                                    <div className="text-[11px] text-slate-600 bg-slate-50/50 p-2 rounded-lg border border-slate-50 italic">
+                                                        "{h.reason || 'No reason provided'}"
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
-                                <div className="flex gap-2">
-                                    <input
-                                        value={commentText}
-                                        onChange={e => setCommentText(e.target.value)}
-                                        onKeyDown={e => e.key === 'Enter' && handleAddComment()}
-                                        placeholder="Write a comment..."
-                                        className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-slate-50"
-                                    />
-                                    <button onClick={handleAddComment} disabled={commentSaving || !commentText.trim()} className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg font-semibold hover:bg-teal-700 disabled:opacity-50 transition">
-                                        {commentSaving ? '...' : 'Post'}
-                                    </button>
-                                </div>
                             </div>
-                        </div>
+                        )}
                     </div>
                 </div>
             )}

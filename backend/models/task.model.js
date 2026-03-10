@@ -13,6 +13,13 @@ const taskSchema = new mongoose.Schema({
         user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
         text: { type: String, required: true },
         createdAt: { type: Date, default: Date.now }
+    }],
+    reassignmentHistory: [{
+        previousAssignee: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        newAssignee: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        reassignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        reason: { type: String },
+        timestamp: { type: Date, default: Date.now }
     }]
 }, { timestamps: true });
 
