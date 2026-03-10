@@ -11,12 +11,16 @@ export default function TaskDetails() {
     const [task, setTask] = useState(null);
     const [loading, setLoading] = useState(true);
 
+    const isEmployee = user?.role === 'employee';
+    const isManagerOrAdmin = user?.role === 'manager' || user?.role === 'admin';
+
+
     // Comments
     const [commentText, setCommentText] = useState('');
     const [updatingStatus, setUpdatingStatus] = useState(false);
 
     // Daily Report State
-    const [activeTab, setActiveTab] = useState('comments'); // 'comments' or 'daily-report'
+    const [activeTab, setActiveTab] = useState('comments'); // comments | daily-report | subtasks | history
     const [reports, setReports] = useState([]);
     const [isSubmittingReport, setIsSubmittingReport] = useState(false);
     const [reportData, setReportData] = useState({
@@ -40,6 +44,43 @@ export default function TaskDetails() {
     const [isStageDropdownOpen, setIsStageDropdownOpen] = useState(false);
     const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
     const [isPriorityDropdownOpen, setIsPriorityDropdownOpen] = useState(false);
+    const [showReassignDropdown, setShowReassignDropdown] = useState(false);
+    const [reassigning, setReassigning] = useState(false);
+    const [users, setUsers] = useState([]);
+    const [reassignReason, setReassignReason] = useState('');
+
+    useEffect(() => {
+        axiosInstance.get('/users/assignable')
+            .then(res => {
+                if (res.data.success) setUsers(res.data.data);
+            })
+            .catch(e => console.error('Error fetching assignable users:', e));
+    }, []);
+
+    const handleReassign = async (newUserId) => {
+        if (reassigning) return;
+        if (!reassignReason.trim()) {
+            alert('Please provide a reason for reassignment');
+            return;
+        }
+        setReassigning(true);
+        try {
+            const res = await axiosInstance.put(`/tasks/${id}/reassign`, {
+                newAssigneeId: newUserId,
+                reason: reassignReason
+            });
+            if (res.data.success) {
+                setTask(res.data.data);
+                setShowReassignDropdown(false);
+                setReassignReason('');
+                alert('Task reassigned successfully');
+            }
+        } catch (e) {
+            alert(e.response?.data?.message || 'Reassignment failed');
+        } finally {
+            setReassigning(false);
+        }
+    };
 
     useEffect(() => {
         if (id && token) {
@@ -80,13 +121,13 @@ export default function TaskDetails() {
 
             setReportData(prev => ({ ...prev, progressPercentage: progress }));
         }
-    }, [task?.status, reports.length]);
+    }, [task?.status, reports?.length]);
 
     const fetchReports = async () => {
         try {
             const res = await axiosInstance.get(`/daily-reports/task/${id}`);
             if (res.data.success) {
-                setReports(res.data.data);
+                setReports(res.data.data || []);
             }
         } catch (err) {
             console.error("Error fetching reports:", err);
@@ -304,15 +345,16 @@ export default function TaskDetails() {
     if (!task) return <div className="text-center py-20 text-rose-500 font-bold bg-rose-50 rounded-2xl mx-10 mt-10">Task not found or access denied.</div>;
 
     // Check permissions
-    const isAssignee = task.assignedTo?._id === user?._id;
-    const isManagerOrAdmin = user?.role === 'manager' || user?.role === 'admin';
+    const isAssignee = task?.assignedTo?._id === user?._id;
     const canUpdateStatus = isAssignee || isManagerOrAdmin;
 
     // Same-day duplicate guard
     const todayStr = new Date().toISOString().split('T')[0]; // e.g. "2026-03-03"
     const todayReportExists = reports.some(r => {
+        if (!r.createdAt) return false;
         const reportDay = new Date(r.createdAt).toISOString().split('T')[0];
-        return reportDay === todayStr && (r.employee?._id === user?._id || r.employee === user?._id);
+        const reportUserId = r.employee?._id || r.employee;
+        return reportDay === todayStr && reportUserId === user?._id;
     });
 
     const allowedStatuses = ['Todo', 'In Progress', 'Review', 'Done'];
@@ -389,6 +431,60 @@ export default function TaskDetails() {
                                 ))}
                             </div>
                         )}
+
+                        {task && (
+                            <div className="mt-2.5 pt-2.5 border-t border-slate-50 relative">
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setShowReassignDropdown(!showReassignDropdown); }}
+                                    className="w-full h-10 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-between border border-slate-100 bg-slate-50/50 hover:bg-slate-100 text-slate-500 hover:text-indigo-600 group"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <svg className="w-4 h-4 text-slate-300 group-hover:text-indigo-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m4-4l-4-4" /></svg>
+                                        Reassign Task
+                                    </div>
+                                    <svg className={`h-3 w-3 transition-transform duration-300 ${showReassignDropdown ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
+                                </button>
+
+                                {showReassignDropdown && (
+                                    <div className="absolute z-[110] top-full mt-2 w-72 right-0 bg-white border border-slate-100 rounded-[22px] shadow-2xl p-4 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                                        <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-1 mb-3">Reassign Reason</h4>
+                                        <textarea
+                                            value={reassignReason}
+                                            onChange={(e) => setReassignReason(e.target.value)}
+                                            placeholder="Why are you reassigning this task?"
+                                            className="w-full p-3 text-[12px] border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-100 bg-slate-50 resize-none mb-4"
+                                            rows={2}
+                                        />
+
+                                        <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-1 mb-2">Select New Assignee</h4>
+                                        <div className="max-h-60 overflow-y-auto space-y-1 custom-scrollbar pr-1">
+                                            {users.length > 0 ? (
+                                                users
+                                                    .filter(u => u._id !== (task.assignedTo?._id || task.assignedTo))
+                                                    .map(u => (
+                                                        <button
+                                                            key={u._id}
+                                                            onClick={() => handleReassign(u._id)}
+                                                            disabled={reassigning}
+                                                            className="w-full flex items-center gap-3 p-2.5 rounded-xl transition-all group/user text-left hover:bg-indigo-50/50"
+                                                        >
+                                                            <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 group-hover/user:bg-indigo-600 group-hover/user:text-white flex items-center justify-center text-[11px] font-black uppercase transition-colors shrink-0">
+                                                                {u.fullName?.[0]}
+                                                            </div>
+                                                            <div className="overflow-hidden">
+                                                                <div className="text-[13px] font-bold text-slate-700 truncate">{u.fullName}</div>
+                                                                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{u.role}</div>
+                                                            </div>
+                                                        </button>
+                                                    ))
+                                            ) : (
+                                                <p className="text-[11px] text-slate-400 text-center py-4 italic font-medium">No users found</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -412,7 +508,20 @@ export default function TaskDetails() {
                                 <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Assignee</h4>
                                 <div className="flex items-center gap-2.5">
                                     <div className="w-[26px] h-[26px] rounded-full bg-slate-100 text-slate-600 font-extrabold flex items-center justify-center text-[10px] uppercase border border-slate-200 shadow-sm shrink-0 box-content">{task.assignedTo?.fullName?.charAt(0) || '?'}</div>
-                                    <span className="text-[13px] font-bold text-slate-700">{task.assignedTo?.fullName || 'Unassigned'}</span>
+                                    <div className="flex flex-col">
+                                        <span className="text-[13px] font-bold text-slate-700">{task.assignedTo?.fullName || 'Unassigned'}</span>
+                                        {task.reassignmentHistory?.length > 0 && (
+                                            <div className="mt-0.5 flex items-center gap-1">
+                                                <span className="text-[8px] font-black text-amber-600 bg-amber-50 px-1 py-0.5 rounded uppercase tracking-tighter">Reassigned</span>
+                                                <span className="text-[8px] font-bold text-slate-400 truncate max-w-[80px]">by {task.reassignmentHistory[task.reassignmentHistory.length - 1].reassignedBy?.fullName || 'System'}</span>
+                                            </div>
+                                        )}
+                                        {task.reassignmentHistory?.length > 0 && (
+                                            <p className="text-[10px] text-slate-500 italic mt-1 bg-slate-50/80 p-1.5 rounded border border-slate-100/50 line-clamp-1">
+                                                "{task.reassignmentHistory[task.reassignmentHistory.length - 1].reason}"
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                             <div>
@@ -467,8 +576,69 @@ export default function TaskDetails() {
                                     {activeTab === 'subtasks' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-teal-500 rounded-full"></div>}
                                     <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black ${activeTab === 'subtasks' ? 'bg-teal-100 text-teal-700' : 'bg-slate-200 text-slate-500'}`}>{subtasks.length || 0}</span>
                                 </button>
+                                <button
+                                    onClick={() => setActiveTab('history')}
+                                    className={`pb-4 px-1 text-[13px] font-bold tracking-tight flex items-center gap-2 transition-all relative ${activeTab === 'history' ? 'text-teal-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                >
+                                    <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                    History
+                                    {activeTab === 'history' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-teal-500 rounded-full"></div>}
+                                    <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black ${activeTab === 'history' ? 'bg-teal-100 text-teal-700' : 'bg-slate-200 text-slate-500'}`}>{task.reassignmentHistory?.length || 0}</span>
+                                </button>
                             </div>
                         </div>
+
+                        {activeTab === 'history' && (
+                            <div className="p-7 overflow-y-auto max-h-[500px] flex-1 hide-scrollbar bg-slate-50/10">
+                                {(!task.reassignmentHistory || task.reassignmentHistory.length === 0) ? (
+                                    <div className="text-center py-12 bg-white/50 rounded-2xl border border-dashed border-slate-200">
+                                        <p className="text-[14px] text-slate-400 font-medium">No reassignment history yet.</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-6 relative before:absolute before:left-[17px] before:top-2 before:bottom-2 before:w-[1.5px] before:bg-slate-100">
+                                        {[...task.reassignmentHistory].reverse().map((h, i) => (
+                                            <div key={h._id || i} className="relative flex gap-6 pl-1.5">
+                                                <div className="w-[30px] h-[30px] rounded-full bg-white border-2 border-slate-50 flex items-center justify-center shrink-0 z-10 text-teal-500 shadow-sm ring-4 ring-slate-50">
+                                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m4-4l-4-4" /></svg>
+                                                </div>
+                                                <div className="flex-1 bg-white p-4.5 rounded-[20px] border border-slate-100 shadow-sm hover:border-teal-100 transition-colors">
+                                                    <div className="flex flex-wrap items-center justify-between gap-3 mb-3 pb-3 border-b border-slate-50">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[12px] font-black text-slate-800 uppercase tracking-tight">{h.reassignedBy?.fullName || 'Someone'}</span>
+                                                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-0.5 rounded-md">Reassigned</span>
+                                                        </div>
+                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{new Date(h.timestamp || h.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                                                    </div>
+
+                                                    <div className="flex flex-col gap-4">
+                                                        <div className="flex items-center gap-4 bg-slate-50/50 p-3 rounded-xl border border-slate-100/50">
+                                                            <div className="flex-1 text-center">
+                                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Previous</div>
+                                                                <div className="text-[13px] font-bold text-slate-600 bg-white py-2 rounded-lg border border-slate-100 truncate px-2">{h.previousAssignee?.fullName || 'Unassigned'}</div>
+                                                            </div>
+                                                            <div className="shrink-0 text-teal-400">
+                                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                                                            </div>
+                                                            <div className="flex-1 text-center">
+                                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">New Assignee</div>
+                                                                <div className="text-[13px] font-black text-teal-600 bg-teal-50/50 py-2 rounded-lg border border-teal-100/50 truncate px-2">{h.newAssignee?.fullName || 'Unknown'}</div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="px-1 text-center sm:text-left">
+                                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Reason for Change</div>
+                                                            <div className="text-[13px] font-medium text-slate-600 italic bg-amber-50/30 p-4 rounded-xl border border-amber-100/30 leading-relaxed strike-none">
+                                                                "{h.reason || 'No reason provided'}"
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {activeTab === 'comments' ? (
                             <>
@@ -822,7 +992,7 @@ export default function TaskDetails() {
                                                                         <svg className="w-3 h-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                                                                         Expected Completion
                                                                     </label>
-                                                                    <input type="date" value={reportData.expectedCompletion} onChange={e => setReportData({ ...reportData, expectedCompletion: e.target.value })} className="w-full px-3 h-10 border border-slate-100 rounded-xl text-[13px] font-bold text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300 transition-all cursor-pointer" />
+                                                                    <input type="date" value={reportData.expectedCompletion} min={new Date().toISOString().split('T')[0]} onChange={e => setReportData({ ...reportData, expectedCompletion: e.target.value })} className="w-full px-3 h-10 border border-slate-100 rounded-xl text-[13px] font-bold text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300 transition-all cursor-pointer" />
                                                                 </div>
                                                             </>
                                                         )}
@@ -919,7 +1089,7 @@ export default function TaskDetails() {
                                                         </div>
                                                         <div className="rounded-2xl border border-slate-100 p-4 bg-white hover:border-teal-100/80 transition-all">
                                                             <label className="flex items-center gap-1.5 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2"><svg className="w-3 h-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>Expected Completion</label>
-                                                            <input type="date" value={reportData.expectedCompletion} onChange={e => setReportData({ ...reportData, expectedCompletion: e.target.value })} className="w-full px-3 h-10 border border-slate-100 rounded-xl text-[13px] font-bold text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300 transition-all cursor-pointer" />
+                                                            <input type="date" value={reportData.expectedCompletion} min={new Date().toISOString().split('T')[0]} onChange={e => setReportData({ ...reportData, expectedCompletion: e.target.value })} className="w-full px-3 h-10 border border-slate-100 rounded-xl text-[13px] font-bold text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300 transition-all cursor-pointer" />
                                                         </div>
                                                     </>)}
                                                     {/* Fields for COMPLETED */}
@@ -1180,6 +1350,7 @@ export default function TaskDetails() {
                                                 </div>
                                                 <input
                                                     type="date"
+                                                    min={new Date().toISOString().split('T')[0]}
                                                     className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-[12px] font-bold outline-none focus:border-indigo-400 cursor-pointer text-slate-500 transition-all"
                                                     value={newSubtask.dueDate}
                                                     onChange={e => setNewSubtask({ ...newSubtask, dueDate: e.target.value })}

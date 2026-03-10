@@ -65,6 +65,16 @@ export default function Dashboard() {
         }
     };
 
+    const getTodayStr = () => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    };
+    const getDueStr = (d) => {
+        if (!d) return null;
+        const date = new Date(d);
+        return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+    };
+    const todayStr = getTodayStr();
     const now = new Date();
     const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
@@ -74,8 +84,8 @@ export default function Dashboard() {
         { title: 'Total Projects', value: projects.length, icon: 'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z', color: 'bg-indigo-50 text-indigo-600', trend: 'Active' },
         { title: 'Active Tasks', value: activeTasksList.length, icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2', color: 'bg-blue-50 text-blue-600', trend: 'Running' },
         { title: 'To Be Reviewed', value: tasks.filter(t => t.status === 'Review').length, icon: 'M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z', color: 'bg-amber-50 text-amber-600', trend: 'Action Needed' },
-        { title: 'Overdue', value: tasks.filter(t => t.dueDate && new Date(t.dueDate) < now && t.status !== 'Completed' && t.status !== 'Done').length, icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', color: 'bg-rose-50 text-rose-600', trend: 'Critical' },
-        { title: 'Due Soon', value: tasks.filter(t => t.dueDate && new Date(t.dueDate) > now && new Date(t.dueDate) <= sevenDaysLater && t.status !== 'Completed' && t.status !== 'Done').length, icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', color: 'bg-orange-50 text-orange-600', trend: '7 Days' },
+        { title: 'Overdue', value: tasks.filter(t => t.dueDate && getDueStr(t.dueDate) < todayStr && t.status !== 'Completed' && t.status !== 'Done').length, icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', color: 'bg-rose-50 text-rose-600', trend: 'Critical' },
+        { title: 'Due Soon', value: tasks.filter(t => t.dueDate && getDueStr(t.dueDate) >= todayStr && new Date(t.dueDate) <= sevenDaysLater && t.status !== 'Completed' && t.status !== 'Done').length, icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', color: 'bg-orange-50 text-orange-600', trend: '7 Days' },
         { title: 'Teams Working', value: `${employees.length > 0 ? Math.min(100, Math.round((tasks.filter(t => t.status === 'In Progress').length / (employees.length * 3)) * 100)) : 0}%`, icon: 'M13 10V3L4 14h7v7l9-11h-7z', color: 'bg-emerald-50 text-emerald-600', trend: 'Load' },
     ];
 
@@ -96,7 +106,7 @@ export default function Dashboard() {
     const teamWorkload = employees.map(emp => {
         const empTasks = tasks.filter(t => t.assignedTo?._id === emp._id);
         const active = empTasks.filter(t => t.status !== 'Completed' && t.status !== 'Done').length;
-        const overdue = empTasks.filter(t => t.dueDate && new Date(t.dueDate) < now && t.status !== 'Completed' && t.status !== 'Done').length;
+        const overdue = empTasks.filter(t => t.dueDate && getDueStr(t.dueDate) < todayStr && t.status !== 'Completed' && t.status !== 'Done').length;
         let indicator = 'Low';
         if (active > 5) indicator = 'High';
         else if (active > 2) indicator = 'Medium';
@@ -376,7 +386,7 @@ export default function Dashboard() {
                                         ? Math.min(100, Math.round(((completedNum * 1) + (reviewNum * 0.7) + (inProgressNum * 0.3)) / projTasks.length * 100))
                                         : 0;
 
-                                    const overdue = projTasks.filter(t => t.dueDate && new Date(t.dueDate) < now && t.status !== 'Completed' && t.status !== 'Done').length;
+                                    const overdue = projTasks.filter(t => t.dueDate && getDueStr(t.dueDate) < todayStr && t.status !== 'Completed' && t.status !== 'Done').length;
                                     const healthColor = overdue > 4 ? 'bg-rose-500' : overdue > 1 ? 'bg-amber-500' : 'bg-emerald-500';
 
                                     return (

@@ -40,6 +40,10 @@ export const quickTaskApi = {
     toggleChecklist: async (taskId, itemId, completed) => {
         const res = await axiosInstance.patch(`${BASE}/${taskId}/checklist/${itemId}`, { completed });
         return res.data;
+    },
+    reassign: async (id, newAssigneeId, reason) => {
+        const res = await axiosInstance.post(`${BASE}/${id}/reassign`, { newAssigneeId, reason });
+        return res.data;
     }
 };
 

@@ -6,5 +6,6 @@ const { authenticateToken, authorizeRoles } = require('../middleware/auth.middle
 router.use(authenticateToken); // Protect all project routes
 
 router.get('/employees', authorizeRoles('admin', 'manager'), userController.getEmployees);
+router.get('/assignable', userController.getAssignableUsers);
 
 module.exports = router;

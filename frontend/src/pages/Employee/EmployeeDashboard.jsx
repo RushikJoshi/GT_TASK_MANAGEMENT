@@ -29,8 +29,12 @@ export default function EmployeeDashboard() {
             const res = await axiosInstance.get('/daily-reports/check-today');
             if (res.data.success && res.data.data && !res.data.data.isSubmittedToday) {
                 setMissingTasks(res.data.data.missingTasks || []);
-                // Only show reminder after certain time or just every login
-                setShowReminder(true);
+                // Only show reminder if not already shown in this session
+                const alreadyShown = sessionStorage.getItem('dailyReminderShown');
+                if (!alreadyShown) {
+                    setShowReminder(true);
+                    sessionStorage.setItem('dailyReminderShown', 'true');
+                }
             }
         } catch (err) {
             console.error("Error checking reports:", err);
@@ -61,16 +65,21 @@ export default function EmployeeDashboard() {
         total: tasks.length,
         dueToday: tasks.filter(t => {
             if (!t.dueDate) return false;
-            const today = new Date().toISOString().split('T')[0];
-            return t.dueDate.split('T')[0] === today;
+            const now = new Date();
+            const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            const due = new Date(t.dueDate);
+            const dueStr = `${due.getUTCFullYear()}-${String(due.getUTCMonth() + 1).padStart(2, '0')}-${String(due.getUTCDate()).padStart(2, '0')}`;
+            return dueStr === todayStr;
         }).length,
         inProgress: tasks.filter(t => t.status === 'In Progress').length,
         completed: tasks.filter(t => t.status === 'Completed' || t.status === 'Done').length,
         upcoming: tasks.filter(t => {
             if (!t.dueDate || t.status === 'Completed' || t.status === 'Done') return false;
-            const today = new Date();
+            const now = new Date();
+            const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
             const due = new Date(t.dueDate);
-            return due > today && due <= new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+            const dueStr = `${due.getUTCFullYear()}-${String(due.getUTCMonth() + 1).padStart(2, '0')}-${String(due.getUTCDate()).padStart(2, '0')}`;
+            return dueStr > todayStr && due <= new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
         }).length
     };
 

@@ -219,7 +219,10 @@ exports.getTaskById = async (req, res) => {
             .populate('project', 'name workflow')
             .populate('assignedTo', 'fullName email _id')
             .populate('createdBy', 'fullName email')
-            .populate('comments.user', 'fullName email avatar');
+            .populate('comments.user', 'fullName email avatar')
+            .populate('reassignmentHistory.previousAssignee', 'fullName')
+            .populate('reassignmentHistory.newAssignee', 'fullName')
+            .populate('reassignmentHistory.reassignedBy', 'fullName');
 
         if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
 
@@ -286,6 +289,65 @@ exports.deleteTask = async (req, res) => {
         await updateProjectProgress(projectId);
 
         res.status(200).json({ success: true, message: 'Task deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+// @desc    Reassign a task
+// @route   PUT /api/tasks/:id/reassign
+// @access  Private (Admin/Manager only)
+exports.reassignTask = async (req, res) => {
+    try {
+        const { newAssigneeId, reason } = req.body;
+        const task = await Task.findById(req.params.id);
+
+        if (!task) {
+            return res.status(404).json({ success: false, message: 'Task not found' });
+        }
+
+        const oldAssignee = task.assignedTo;
+        task.assignedTo = newAssigneeId;
+
+        const oldUser = oldAssignee ? await User.findById(oldAssignee) : null;
+        const newUser = await User.findById(newAssigneeId);
+
+        // Log reassignment history
+        task.reassignmentHistory.push({
+            previousAssignee: oldAssignee,
+            newAssignee: newAssigneeId,
+            reassignedBy: req.user._id,
+            reason: reason || 'No reason provided'
+        });
+
+        await task.save();
+
+        // Create notification for new assignee
+        const Notification = require('../models/notification.model');
+        await Notification.create({
+            user: newAssigneeId,
+            title: 'Task Reassigned',
+            message: `The task "${task.title}" has been reassigned to you by ${req.user.fullName}. Reason: ${reason || 'Not specified'}`,
+            type: 'task'
+        });
+
+        // Log activity
+        const Activity = require('../models/activity.model');
+        await Activity.create({
+            user: req.user._id,
+            action: `reassigned task to ${newUser?.fullName || 'someone'}`,
+            entityType: 'task',
+            entityId: task._id,
+            targetName: task.title
+        });
+
+        const updatedTask = await Task.findById(task._id)
+            .populate('assignedTo', 'fullName email avatar')
+            .populate('project', 'name')
+            .populate('reassignmentHistory.previousAssignee', 'fullName')
+            .populate('reassignmentHistory.newAssignee', 'fullName')
+            .populate('reassignmentHistory.reassignedBy', 'fullName');
+
+        res.status(200).json({ success: true, data: updatedTask });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

@@ -21,3 +21,17 @@ exports.getEmployees = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+// @desc    Get all non-admin users for assignment (All roles can access)
+// @route   GET /api/users/assignable
+// @access  Private
+exports.getAssignableUsers = async (req, res) => {
+    try {
+        const users = await User.find({ role: { $ne: 'admin' }, status: 'ACTIVE' })
+            .select('fullName email avatar role _id')
+            .sort({ fullName: 1 });
+        res.status(200).json({ success: true, data: users });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
