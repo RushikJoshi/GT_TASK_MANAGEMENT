@@ -49,7 +49,7 @@ export default function Profile() {
                 if (res.success && res.data) {
                     const user = res.data;
                     setFormData({
-                        name: user.name || '',
+                        name: user.fullName || user.name || '',
                         email: user.email || '',
                         role: user.role || '',
                         avatar: user.avatar || '',
