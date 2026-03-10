@@ -19,7 +19,7 @@ export default function ProjectDetails() {
 
     // Create Task Modal
     const [showTaskModal, setShowTaskModal] = useState(false);
-    const [taskForm, setTaskForm] = useState({ title: '', description: '', priority: 'Medium', dueDate: '', assignedTo: '', status: 'Todo' });
+    const [taskForm, setTaskForm] = useState({ title: '', description: '', priority: 'Medium', dueDate: '', assignedTo: '', status: 'To Do' });
 
     // Workflow Customization State
     const [showWorkflowModal, setShowWorkflowModal] = useState(false);
@@ -102,6 +102,18 @@ export default function ProjectDetails() {
         if (nowExpanded) fetchSubtasksForTask(taskId);
     };
 
+    const handleOpenTaskModal = () => {
+        setTaskForm({
+            title: '',
+            description: '',
+            priority: 'Medium',
+            dueDate: '',
+            assignedTo: '',
+            status: project?.workflow?.[0]?.name || 'To Do'
+        });
+        setShowTaskModal(true);
+    };
+
     const handleCreateTask = async (e) => {
         e.preventDefault();
         try {
@@ -110,7 +122,7 @@ export default function ProjectDetails() {
                 // To display full populated details, refetch tasks
                 fetchData();
                 setShowTaskModal(false);
-                setTaskForm({ title: '', description: '', priority: 'Medium', dueDate: '', assignedTo: '', status: 'Todo' });
+                setTaskForm({ title: '', description: '', priority: 'Medium', dueDate: '', assignedTo: '', status: project?.workflow?.[0]?.name || 'To Do' });
             }
         } catch (err) {
             console.error(err);
@@ -223,7 +235,7 @@ export default function ProjectDetails() {
                                 <svg className="w-4 h-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
                                 Workflow
                             </button>
-                            <button onClick={() => setShowTaskModal(true)} className="bg-teal-600 hover:bg-teal-700 text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all duration-300 shadow-sm hover:shadow-md hover:-translate-y-0.5 flex items-center justify-center gap-2 focus:ring-4 focus:ring-teal-100">
+                            <button onClick={handleOpenTaskModal} className="bg-teal-600 hover:bg-teal-700 text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all duration-300 shadow-sm hover:shadow-md hover:-translate-y-0.5 flex items-center justify-center gap-2 focus:ring-4 focus:ring-teal-100">
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" /></svg>
                                 Create Task
                             </button>

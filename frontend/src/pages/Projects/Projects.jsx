@@ -251,7 +251,7 @@ export default function Projects() {
                         <h1 className="text-[26px] font-heading font-bold text-slate-800 tracking-tight">Projects</h1>
                         <p className="text-[14px] font-medium text-slate-500 mt-1">Manage and track your team's initiatives.</p>
                     </div>
-                    {user?.role === 'admin' && (
+                    {isManagerOrAdmin && (
                         <button onClick={() => setShowModal(true)} className="bg-teal-600 hover:bg-teal-700 text-white px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-300 shadow-sm hover:shadow-md hover:-translate-y-0.5 focus:ring-4 focus:ring-teal-100 flex items-center gap-2">
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" /></svg>
                             Create Project
