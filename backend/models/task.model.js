@@ -20,6 +20,13 @@ const taskSchema = new mongoose.Schema({
         reassignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
         reason: { type: String },
         timestamp: { type: Date, default: Date.now }
+    }],
+    attachments: [{
+        name: { type: String, required: true },
+        data: { type: String, required: true },
+        mime: { type: String, required: true },
+        uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        uploadedAt: { type: Date, default: Date.now }
     }]
 }, { timestamps: true });
 

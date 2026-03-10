@@ -169,7 +169,20 @@ exports.updateProfile = async (req, res) => {
         // Accept either 'name' or 'fullName' from frontend
         const nameValue = name || fullName;
         if (nameValue) user.fullName = nameValue;
-        if (avatar !== undefined) user.avatar = avatar;
+        if (avatar !== undefined) {
+            if (avatar && avatar.startsWith('data:image')) {
+                const parts = avatar.split(';');
+                const mime = parts[0].split(':')[1];
+                const base64Data = parts[1].split(',')[1];
+                user.avatar = base64Data;
+                user.avatarMime = mime;
+            } else if (avatar === '') {
+                user.avatar = '';
+                user.avatarMime = '';
+            } else {
+                user.avatar = avatar; // Just in case it's a normal URL
+            }
+        }
         if (phone !== undefined) user.phone = phone;
         if (bio !== undefined) user.bio = bio;
         if (jobTitle !== undefined) user.jobTitle = jobTitle;
@@ -185,6 +198,13 @@ exports.updateProfile = async (req, res) => {
         delete userData.password; // Don't send password back
         // Add 'name' alias so frontend receives both
         userData.name = userData.fullName;
+
+        // Construct avatar data URL
+        if (userData.avatar && userData.avatarMime) {
+            userData.avatar = `data:${userData.avatarMime};base64,${userData.avatar}`;
+        } else {
+            userData.avatar = '';
+        }
 
         return res.status(200).json({
             success: true,

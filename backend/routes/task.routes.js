@@ -19,5 +19,6 @@ router.delete('/:id', authorizeRoles('admin', 'manager'), taskController.deleteT
 
 router.get('/:id', taskController.getTaskById);
 router.post('/:id/comments', taskController.addComment);
+router.post('/:id/attachments', taskController.addAttachment);
 
 module.exports = router;

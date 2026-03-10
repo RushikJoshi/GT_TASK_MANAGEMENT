@@ -341,6 +341,37 @@ export default function TaskDetails() {
         }
     };
 
+    const handleFileUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) {
+            alert('File size exceeds 5MB limit');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            const dataUrl = event.target.result;
+            const parts = dataUrl.split(';');
+            const mime = parts[0].split(':')[1];
+            const base64Data = parts[1].split(',')[1];
+
+            try {
+                const res = await axiosInstance.post(`/tasks/${id}/attachments`, {
+                    name: file.name,
+                    data: base64Data,
+                    mime: mime
+                });
+                if (res.data.success) {
+                    setTask(res.data.data);
+                }
+            } catch (err) {
+                alert(err.response?.data?.message || 'Upload failed');
+            }
+        };
+        reader.readAsDataURL(file);
+    };
+
     if (loading) return <div className="text-center py-20 text-gray-500 font-medium tracking-wide">Loading task details...</div>;
     if (!task) return <div className="text-center py-20 text-rose-500 font-bold bg-rose-50 rounded-2xl mx-10 mt-10">Task not found or access denied.</div>;
 
@@ -495,13 +526,39 @@ export default function TaskDetails() {
                 <div className="lg:col-span-2 space-y-6">
                     <div className="bg-white rounded-[24px] border border-slate-100 shadow-sm p-6 md:p-8">
                         <h2 className="text-[15px] font-heading font-bold text-slate-800 mb-5 border-b border-slate-100 pb-3">Description</h2>
-                        <div className="prose prose-sm prose-slate max-w-none text-slate-600 leading-relaxed font-medium">
+                        <div className="prose prose-sm prose-slate max-w-none text-slate-600 leading-relaxed font-medium mb-6">
                             {task.description ? (
                                 <p className="whitespace-pre-wrap">{task.description}</p>
                             ) : (
                                 <p className="italic text-slate-400">No description provided for this task.</p>
                             )}
                         </div>
+
+                        {task.attachments?.length > 0 && (
+                            <div className="mt-8 border-t border-slate-100 pt-6">
+                                <h3 className="text-[13px] font-bold text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                    <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                                    Attachments
+                                    <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full text-[10px]">{task.attachments.length}</span>
+                                </h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    {task.attachments.map((att, idx) => (
+                                        <a key={idx} href={`data:${att.mime};base64,${att.data}`} download={att.name} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-white hover:border-teal-400 transition-all group shadow-sm">
+                                            <div className="w-10 h-10 rounded-lg bg-teal-100 text-teal-600 flex items-center justify-center shrink-0">
+                                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-[12px] font-bold text-slate-700 truncate group-hover:text-teal-700 transition">{att.name}</p>
+                                                <p className="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">{att.mime.split('/')[1] || 'FILE'}</p>
+                                            </div>
+                                            <div className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                            </div>
+                                        </a>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         <div className="mt-8 pt-6 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-6">
                             <div>
@@ -1458,17 +1515,20 @@ export default function TaskDetails() {
                     <div className="bg-white rounded-[24px] border border-slate-100 shadow-sm p-6 lg:p-7">
                         <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-5 border-b border-slate-100 pb-3">Quick Actions</h2>
                         <div className="flex flex-col gap-2">
-                            <button className="flex items-center gap-3 w-full text-left px-4 py-3 rounded-xl hover:bg-slate-50 transition-all text-[13px] font-bold text-slate-600 border border-transparent hover:border-slate-200 shadow-sm hover:shadow">
+                            <button
+                                onClick={() => document.getElementById('task-attachment-upload').click()}
+                                className="flex items-center gap-3 w-full text-left px-4 py-3 rounded-xl hover:bg-slate-50 transition-all text-[13px] font-bold text-slate-600 border border-transparent hover:border-slate-200 shadow-sm hover:shadow"
+                            >
                                 <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
                                 Attach Files
                             </button>
-                            <button className="flex items-center gap-3 w-full text-left px-4 py-3 rounded-xl hover:bg-slate-50 transition-all text-[13px] font-bold text-slate-600 border border-transparent hover:border-slate-200 shadow-sm hover:shadow" onClick={() => {
-                                navigator.clipboard.writeText(window.location.href);
-                                alert('Link copied to clipboard!');
-                            }}>
-                                <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-                                Copy Task Link
-                            </button>
+                            <input
+                                type="file"
+                                id="task-attachment-upload"
+                                className="hidden"
+                                onChange={handleFileUpload}
+                            />
+
                             {isManagerOrAdmin && (
                                 <button
                                     onClick={handleDeleteTask}
