@@ -30,4 +30,17 @@ const userSchema = new mongoose.Schema({
     lastLogin: { type: Date }
 }, { timestamps: true });
 
+userSchema.set('toJSON', {
+    transform: function (doc, ret, options) {
+        if (ret.avatar && ret.avatarMime) {
+            ret.avatar = `data:${ret.avatarMime};base64,${ret.avatar}`;
+        } else if (ret.avatar && !ret.avatar.startsWith('http') && !ret.avatar.startsWith('data:')) {
+            ret.avatar = '';
+        }
+        delete ret.avatarMime;
+        delete ret.password;
+        return ret;
+    }
+});
+
 module.exports = mongoose.model('User', userSchema);
