@@ -38,6 +38,18 @@ const corsOptions = {
     optionsSuccessStatus: 200,
 };
 
+const path = require('path');
+const publicPath = path.join(__dirname, '../client/dist');
+if (process.env.NODE_ENV === 'production') {
+    app.use(express.static(publicPath));
+    // any non-api routes should return the React app
+    // avoid using a plain '*' string here; path-to-regexp throws when
+    // parsing it (see production server crash). use a regex instead.
+    app.get(/^(?!\/api).*/, (req, res) => {
+        res.sendFile(path.join(publicPath, 'index.html'));
+    });
+}
+
 app.use(cors(corsOptions));
 
 // ✅ Helmet after CORS
