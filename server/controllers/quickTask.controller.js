@@ -6,7 +6,7 @@ const User = require('../models/user.model');
 // ────────────────────────────────────────────────────────────────────────────
 // Helper
 // ────────────────────────────────────────────────────────────────────────────
-const buildFilter = (req) => {
+const buildFilter = async (req) => {
     const filter = { isArchived: false };
     const { status, priority, category, assignedTo, dueDate, view, search } = req.query;
 
@@ -46,13 +46,23 @@ const buildFilter = (req) => {
         filter.dueDate = { $gte: d, $lt: next };
     }
 
-    // Global search filter - handled in getQuickTasks for user names
+    // Global search filter (title/description + creator/assignee name)
     if (search && search.trim()) {
         const searchRegex = new RegExp(search.trim(), 'i');
         const searchConditions = [
             { title: searchRegex },
             { description: searchRegex }
         ];
+
+        // Also allow searching by user name (creator / assignee)
+        const matchingUsers = await User.find({ fullName: searchRegex }).select('_id');
+        const userIds = matchingUsers.map(u => u._id);
+        if (userIds.length) {
+            searchConditions.push(
+                { createdBy: { $in: userIds } },
+                { assignedTo: { $in: userIds } }
+            );
+        }
 
         if (filter.$or) {
             // For employees, combine role-based $or with search
@@ -61,6 +71,8 @@ const buildFilter = (req) => {
                 { $or: searchConditions }
             ];
             delete filter.$or; // Remove the original $or since it's now in $and
+        } else if (filter.$and) {
+            filter.$and.push({ $or: searchConditions });
         } else {
             filter.$or = searchConditions;
         }
@@ -134,38 +146,11 @@ exports.createQuickTask = async (req, res) => {
 // ────────────────────────────────────────────────────────────────────────────
 exports.getQuickTasks = async (req, res) => {
     try {
-        const filter = buildFilter(req);
+        const filter = await buildFilter(req);
         const { search } = req.query;
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
         const skip = (page - 1) * limit;
-
-        // For admin users, add user name search
-        if (search && search.trim() && req.user.role === 'admin') {
-            const searchRegex = new RegExp(search.trim(), 'i');
-            const matchingUsers = await User.find({
-                fullName: searchRegex
-            }).select('_id');
-
-            const userIds = matchingUsers.map(u => u._id);
-            if (userIds.length > 0) {
-                const userSearchConditions = [
-                    { createdBy: { $in: userIds } },
-                    { assignedTo: { $in: userIds } }
-                ];
-
-                if (filter.$and) {
-                    // Add to existing $and
-                    filter.$and.push({ $or: userSearchConditions });
-                } else if (filter.$or) {
-                    // Extend existing $or
-                    filter.$or = filter.$or.concat(userSearchConditions);
-                } else {
-                    // Create new $or
-                    filter.$or = userSearchConditions;
-                }
-            }
-        }
 
         const [tasks, total] = await Promise.all([
             QuickTask.find(filter)

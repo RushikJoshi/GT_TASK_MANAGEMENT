@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useLocation } from 'react-router-dom';
 import axiosInstance from '../../api/axiosInstance';
 import { quickTaskApi } from '../../api/quickTask.api';
 import { notificationApi } from '../../api/notification.api';
@@ -64,6 +65,12 @@ export default function QuickTasks() {
     const [view, setView] = useState('all');  // all | my | assigned | upcoming | overdue
     const [filters, setFilters] = useState({ status: '', priority: '', category: '', assignedTo: '', dueDate: '' });
     const [search, setSearch] = useState('');
+
+    const location = useLocation();
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        setSearch(params.get('search') || '');
+    }, [location.search]);
 
     // ── dropdowns + panel state ───────────────────────────────────────────
     const [showFiltersPanel, setShowFiltersPanel] = useState(false);

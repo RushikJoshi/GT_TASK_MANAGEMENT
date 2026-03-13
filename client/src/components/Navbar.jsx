@@ -1,13 +1,40 @@
 import React, { useEffect, useState } from 'react';
 import Input from './UI/Input';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { notificationApi } from '../api/notification.api';
 
 export default function Navbar({ onToggleSidebar }) {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const [unreadCount, setUnreadCount] = useState(0);
+
+    const [searchText, setSearchText] = useState('');
+
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setSearchText(params.get('search') || '');
+    }, [location.search]);
+
+    const handleSearchSubmit = () => {
+        const trimmed = searchText.trim();
+        const params = new URLSearchParams();
+        if (trimmed) params.set('search', trimmed);
+
+        const basePath = location.pathname;
+        const allowedPaths = ['/tasks', '/quick-tasks', '/projects', '/activity', '/notifications'];
+        const targetPath = allowedPaths.includes(basePath) ? basePath : '/tasks';
+
+        navigate({ pathname: targetPath, search: params.toString() ? `?${params.toString()}` : '' });
+    };
+
+    const handleSearchKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            handleSearchSubmit();
+        }
+    };
 
     useEffect(() => {
         const fetchUnread = async () => {
@@ -47,6 +74,9 @@ export default function Navbar({ onToggleSidebar }) {
                     <input
                         type="text"
                         placeholder="Search tasks, projects, or commands..."
+                        value={searchText}
+                        onChange={e => setSearchText(e.target.value)}
+                        onKeyDown={handleSearchKeyDown}
                         className="w-full pl-10 pr-4 py-2 bg-slate-50/50 border border-slate-200 text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500/50 hover:bg-white hover:shadow-sm transition-all duration-300 text-slate-700 placeholder-slate-400"
                     />
                 </div>
