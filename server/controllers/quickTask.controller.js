@@ -8,7 +8,7 @@ const User = require('../models/user.model');
 // ────────────────────────────────────────────────────────────────────────────
 const buildFilter = (req) => {
     const filter = { isArchived: false };
-    const { status, priority, category, assignedTo, dueDate, view } = req.query;
+    const { status, priority, category, assignedTo, dueDate, view, search } = req.query;
 
     // Role-based scoping
     if (req.user.role === 'employee') {
@@ -44,6 +44,26 @@ const buildFilter = (req) => {
         const next = new Date(d);
         next.setDate(next.getDate() + 1);
         filter.dueDate = { $gte: d, $lt: next };
+    }
+
+    // Global search filter - handled in getQuickTasks for user names
+    if (search && search.trim()) {
+        const searchRegex = new RegExp(search.trim(), 'i');
+        const searchConditions = [
+            { title: searchRegex },
+            { description: searchRegex }
+        ];
+
+        if (filter.$or) {
+            // For employees, combine role-based $or with search
+            filter.$and = [
+                { $or: filter.$or },
+                { $or: searchConditions }
+            ];
+            delete filter.$or; // Remove the original $or since it's now in $and
+        } else {
+            filter.$or = searchConditions;
+        }
     }
 
     return filter;
@@ -115,9 +135,37 @@ exports.createQuickTask = async (req, res) => {
 exports.getQuickTasks = async (req, res) => {
     try {
         const filter = buildFilter(req);
+        const { search } = req.query;
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
         const skip = (page - 1) * limit;
+
+        // For admin users, add user name search
+        if (search && search.trim() && req.user.role === 'admin') {
+            const searchRegex = new RegExp(search.trim(), 'i');
+            const matchingUsers = await User.find({
+                fullName: searchRegex
+            }).select('_id');
+
+            const userIds = matchingUsers.map(u => u._id);
+            if (userIds.length > 0) {
+                const userSearchConditions = [
+                    { createdBy: { $in: userIds } },
+                    { assignedTo: { $in: userIds } }
+                ];
+
+                if (filter.$and) {
+                    // Add to existing $and
+                    filter.$and.push({ $or: userSearchConditions });
+                } else if (filter.$or) {
+                    // Extend existing $or
+                    filter.$or = filter.$or.concat(userSearchConditions);
+                } else {
+                    // Create new $or
+                    filter.$or = userSearchConditions;
+                }
+            }
+        }
 
         const [tasks, total] = await Promise.all([
             QuickTask.find(filter)
@@ -180,9 +228,9 @@ exports.updateQuickTask = async (req, res) => {
 
         // Only admin or task owner can edit
         const isOwner = task.createdBy?.toString() === req.user._id.toString();
-        if (req.user.role === 'employee' && !isOwner) {
-            return res.status(403).json({ success: false, message: 'Only the task creator or admin can edit this task' });
-        }
+        // if (req.user.role === 'employee' && !isOwner) {
+        //     return res.status(403).json({ success: false, message: 'Only the task creator or admin can edit this task' });
+        // }
 
         const allowed = [
             'title', 'description', 'assignedTo', 'priority', 'status',

@@ -49,10 +49,13 @@ export default function Sidebar({ isMobileOpen, setIsMobileOpen }) {
 
             {/* Logo Section */}
             <div className="flex items-center gap-3.5 px-4 mb-10 cursor-pointer group" onClick={() => navigate(defaultDashboardPath)}>
-                <div className="w-11 h-11 ml-0.5 bg-gradient-to-br from-teal-400 to-teal-600 rounded-xl flex items-center justify-center text-white font-bold shadow-md shadow-teal-500/20 group-hover:shadow-teal-500/30 group-hover:-translate-y-0.5 transition-transform duration-300 shrink-0">
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div className="w-11 h-11 ml-0.5 rounded-xl flex items-center justify-center tgroup-hover:shadow-teal-500/30 group-hover:-translate-y-0.5 transition-transform duration-300 shrink-0">
+                {/* <div className="w-11 h-11 ml-0.5 bg-gradient-to-br from-teal-400 to-teal-600 rounded-xl flex items-center justify-center text-white font-bold shadow-md shadow-teal-500/20 group-hover:shadow-teal-500/30 group-hover:-translate-y-0.5 transition-transform duration-300 shrink-0"> */}
+                    {/* <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
+                    </svg> */}
+                    {/* <img src='logo.jpeg' /> */}
+                    <img src='logo2.png' />
                 </div>
                 <div className={`overflow-hidden transition-all duration-[0.3s] ease-in-out flex items-center
                     max-w-0 lg:max-w-0 lg:group-hover/sidebar:max-w-[200px]

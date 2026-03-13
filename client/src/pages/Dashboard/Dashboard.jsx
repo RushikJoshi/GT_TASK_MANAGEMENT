@@ -65,33 +65,48 @@ export default function Dashboard() {
         }
     };
 
-    const getTodayStr = () => {
-        const now = new Date();
-        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    };
-    const getDueStr = (d) => {
-        if (!d) return null;
-        const date = new Date(d);
-        return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
-    };
-    const todayStr = getTodayStr();
+    const normalizeStatus = (status) => (status || '').toString().trim().toLowerCase();
+    const isDoneStatus = (status) => ['done', 'completed'].includes(normalizeStatus(status));
+    const isInProgressStatus = (status) => ['in progress', 'in_progress', 'inprogress'].includes(normalizeStatus(status));
+    const isReviewStatus = (status) => normalizeStatus(status).includes('review');
+
     const now = new Date();
     const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-    const activeTasksList = tasks.filter(t => t.status !== 'Completed' && t.status !== 'Done');
+    const activeTasksList = tasks.filter(t => !isDoneStatus(t.status));
 
     const kpis = [
         { title: 'Total Projects', value: projects.length, icon: 'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z', color: 'bg-indigo-50 text-indigo-600', trend: 'Active' },
-        { title: 'Active Tasks', value: activeTasksList.length, icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2', color: 'bg-blue-50 text-blue-600', trend: 'Running' },
-        { title: 'To Be Reviewed', value: tasks.filter(t => t.status === 'Review').length, icon: 'M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z', color: 'bg-amber-50 text-amber-600', trend: 'Action Needed' },
-        { title: 'Overdue', value: tasks.filter(t => t.dueDate && getDueStr(t.dueDate) < todayStr && t.status !== 'Completed' && t.status !== 'Done').length, icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', color: 'bg-rose-50 text-rose-600', trend: 'Critical' },
-        { title: 'Due Soon', value: tasks.filter(t => t.dueDate && getDueStr(t.dueDate) >= todayStr && new Date(t.dueDate) <= sevenDaysLater && t.status !== 'Completed' && t.status !== 'Done').length, icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', color: 'bg-orange-50 text-orange-600', trend: '7 Days' },
-        { title: 'Teams Working', value: `${employees.length > 0 ? Math.min(100, Math.round((tasks.filter(t => t.status === 'In Progress').length / (employees.length * 3)) * 100)) : 0}%`, icon: 'M13 10V3L4 14h7v7l9-11h-7z', color: 'bg-emerald-50 text-emerald-600', trend: 'Load' },
+        { title: 'Total Tasks', value: tasks.length, icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2', color: 'bg-blue-50 text-blue-600', trend: 'Total' },
+        { title: 'Active Tasks', value: activeTasksList.length, icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2', color: 'bg-teal-50 text-teal-600', trend: 'Running' },
+        // { title: 'To Be Reviewed', value: tasks.filter(t => t.status === 'Review').length, icon: 'M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z', color: 'bg-amber-50 text-amber-600', trend: 'Action Needed' },
+        { title: 'Overdue', value: tasks.filter(t => {
+            if (!t.dueDate || isDoneStatus(t.status)) return false;
+            const due = new Date(t.dueDate);
+            return due < now;
+        }).length, icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', color: 'bg-rose-50 text-rose-600', trend: 'Critical' },
+        { title: 'Due Soon', value: tasks.filter(t => {
+            if (!t.dueDate || isDoneStatus(t.status)) return false;
+            const due = new Date(t.dueDate);
+            return due >= now && due <= sevenDaysLater;
+        }).length, icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', color: 'bg-orange-50 text-orange-600', trend: '7 Days' },
+        { title: 'Teams Working', value: `${employees.length > 0 ? Math.min(100, Math.round((tasks.filter(t => isInProgressStatus(t.status)).length / (employees.length * 3)) * 100)) : 0}%`, icon: 'M13 10V3L4 14h7v7l9-11h-7z', color: 'bg-emerald-50 text-emerald-600', trend: 'Load' },
     ];
+
+    // Normalize status names for consistent chart keys
+    const normalizeStatusLabel = (status) => {
+        const normalized = normalizeStatus(status);
+        if (!normalized) return 'Unknown';
+        if (normalized === 'done' || normalized === 'completed') return 'Completed';
+        if (normalized === 'in progress' || normalized === 'in_progress' || normalized === 'inprogress') return 'In Progress';
+        if (normalized === 'review') return 'Review';
+        if (normalized === 'todo' || normalized === 'to do') return 'Todo';
+        return status;
+    };
 
     // Status Distribution
     const statusCounts = tasks.reduce((acc, t) => {
-        const s = t.status === 'Done' ? 'Completed' : t.status;
+        const s = normalizeStatusLabel(t.status);
         acc[s] = (acc[s] || 0) + 1;
         return acc;
     }, {});
@@ -105,8 +120,12 @@ export default function Dashboard() {
     // Team Workload calculation
     const teamWorkload = employees.map(emp => {
         const empTasks = tasks.filter(t => t.assignedTo?._id === emp._id);
-        const active = empTasks.filter(t => t.status !== 'Completed' && t.status !== 'Done').length;
-        const overdue = empTasks.filter(t => t.dueDate && getDueStr(t.dueDate) < todayStr && t.status !== 'Completed' && t.status !== 'Done').length;
+        const active = empTasks.filter(t => !isDoneStatus(t.status)).length;
+        const overdue = empTasks.filter(t => {
+            if (!t.dueDate || isDoneStatus(t.status)) return false;
+            const due = new Date(t.dueDate);
+            return due < now;
+        }).length;
         let indicator = 'Low';
         if (active > 5) indicator = 'High';
         else if (active > 2) indicator = 'Medium';
@@ -118,7 +137,7 @@ export default function Dashboard() {
         <div className="flex items-center justify-center min-h-[60vh]">
             <div className="flex flex-col items-center gap-4">
                 <div className="w-12 h-12 border-4 border-teal-500/20 border-t-teal-500 rounded-full animate-spin"></div>
-                <p className="text-slate-500 font-medium animate-pulse">Orchestrating your dashboard...</p>
+                <p className="text-slate-500 font-medium animate-pulse">Loading your dashboard...</p>
             </div>
         </div>
     );
@@ -378,15 +397,19 @@ export default function Dashboard() {
                                     </div>
                                 ) : projects.slice(0, 4).map(proj => {
                                     const projTasks = tasks.filter(t => t.project?._id === proj._id);
-                                    const completedNum = projTasks.filter(t => t.status === 'Completed' || t.status === 'Done').length;
-                                    const reviewNum = projTasks.filter(t => t.status === 'Review').length;
-                                    const inProgressNum = projTasks.filter(t => t.status === 'In Progress').length;
+                                    const completedNum = projTasks.filter(t => isDoneStatus(t.status)).length;
+                                    const reviewNum = projTasks.filter(t => isReviewStatus(t.status)).length;
+                                    const inProgressNum = projTasks.filter(t => isInProgressStatus(t.status)).length;
 
                                     const progress = projTasks.length > 0
                                         ? Math.min(100, Math.round(((completedNum * 1) + (reviewNum * 0.7) + (inProgressNum * 0.3)) / projTasks.length * 100))
                                         : 0;
 
-                                    const overdue = projTasks.filter(t => t.dueDate && getDueStr(t.dueDate) < todayStr && t.status !== 'Completed' && t.status !== 'Done').length;
+                                    const overdue = projTasks.filter(t => {
+                                        if (!t.dueDate || isDoneStatus(t.status)) return false;
+                                        const due = new Date(t.dueDate);
+                                        return due < now;
+                                    }).length;
                                     const healthColor = overdue > 4 ? 'bg-rose-500' : overdue > 1 ? 'bg-amber-500' : 'bg-emerald-500';
 
                                     return (
