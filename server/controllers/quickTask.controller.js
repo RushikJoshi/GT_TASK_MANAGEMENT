@@ -180,9 +180,9 @@ exports.updateQuickTask = async (req, res) => {
 
         // Only admin or task owner can edit
         const isOwner = task.createdBy?.toString() === req.user._id.toString();
-        if (req.user.role === 'employee' && !isOwner) {
-            return res.status(403).json({ success: false, message: 'Only the task creator or admin can edit this task' });
-        }
+        // if (req.user.role === 'employee' && !isOwner) {
+        //     return res.status(403).json({ success: false, message: 'Only the task creator or admin can edit this task' });
+        // }
 
         const allowed = [
             'title', 'description', 'assignedTo', 'priority', 'status',
