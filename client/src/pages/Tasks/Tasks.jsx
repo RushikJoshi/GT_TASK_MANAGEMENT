@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import axiosInstance from '../../api/axiosInstance';
 import { useAuth } from '../../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 // ─── Priority helpers ────────────────────────────────────────────────────────
 const priorityConfig = {
@@ -544,11 +544,17 @@ function TaskRow({ task, isEmployee, token, onNavigate }) {
 export default function Tasks() {
     const { token, user } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const [tasks, setTasks] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [filterPriority, setFilterPriority] = useState('All');
     const [filterStatus, setFilterStatus] = useState('All');
+
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        setSearch(params.get('search') || '');
+    }, [location.search]);
 
     const isEmployee = user?.role === 'employee';
     const isManagerAdmin = user?.role === 'manager' || user?.role === 'admin';
