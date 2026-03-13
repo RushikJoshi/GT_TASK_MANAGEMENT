@@ -9,7 +9,7 @@ const quickTaskSchema = new mongoose.Schema({
     title: { type: String, required: true, trim: true },
     description: { type: String, default: '' },
 
-    assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, require:true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
 
     priority: {

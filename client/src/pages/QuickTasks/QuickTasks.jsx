@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import axiosInstance from '../../api/axiosInstance';
 import { quickTaskApi } from '../../api/quickTask.api';
+import { notificationApi } from '../../api/notification.api';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
@@ -61,8 +62,40 @@ export default function QuickTasks() {
 
     // ── view / filter state ───────────────────────────────────────────────
     const [view, setView] = useState('all');  // all | my | assigned | upcoming | overdue
-    const [filters, setFilters] = useState({ status: '', priority: '', category: '' });
+    const [filters, setFilters] = useState({ status: '', priority: '', category: '', assignedTo: '', dueDate: '' });
     const [search, setSearch] = useState('');
+
+    // ── dropdowns + panel state ───────────────────────────────────────────
+    const [showFiltersPanel, setShowFiltersPanel] = useState(false);
+    const filterPanelRef = useRef(null);
+
+    // ── sorting (client-side) ─────────────────────────────────────────────
+    const [sortBy, setSortBy] = useState('newest'); // newest | oldest | dueSoon | priority | assignee
+
+    const PRIORITY_ORDER = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+    const sortTasks = (list) => {
+        const items = [...list];
+        if (sortBy === 'newest') {
+            items.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        } else if (sortBy === 'oldest') {
+            items.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        } else if (sortBy === 'dueSoon') {
+            items.sort((a, b) => {
+                const aDate = a.dueDate ? new Date(a.dueDate) : new Date(8640000000000000);
+                const bDate = b.dueDate ? new Date(b.dueDate) : new Date(8640000000000000);
+                return aDate - bDate;
+            });
+        } else if (sortBy === 'priority') {
+            items.sort((a, b) => (PRIORITY_ORDER[a.priority] ?? 4) - (PRIORITY_ORDER[b.priority] ?? 4));
+        } else if (sortBy === 'assignee') {
+            items.sort((a, b) => {
+                const aName = a.assignedTo?.fullName?.toLowerCase() || '';
+                const bName = b.assignedTo?.fullName?.toLowerCase() || '';
+                return aName.localeCompare(bName);
+            });
+        }
+        return items;
+    };
 
     // ── modal state ───────────────────────────────────────────────────────
     const [showForm, setShowForm] = useState(false);
@@ -72,6 +105,8 @@ export default function QuickTasks() {
     const [formData, setFormData] = useState(emptyForm());
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
+
+    const [showAllComments, setShowAllComments] = useState(false);
 
     // ── checklist new item ────────────────────────────────────────────────
     const [newCheckItem, setNewCheckItem] = useState('');
@@ -109,18 +144,17 @@ export default function QuickTasks() {
             if (filters.status) params.status = filters.status;
             if (filters.priority) params.priority = filters.priority;
             if (filters.category) params.category = filters.category;
+            if (filters.assignedTo) params.assignedTo = filters.assignedTo;
+            if (filters.dueDate) params.dueDate = filters.dueDate;
+            if (search.trim()) params.search = search.trim();
 
             const data = await quickTaskApi.getAll(params);
             if (data.success) {
                 let list = data.data;
-                // Client-side search filter
-                if (search.trim()) {
-                    const q = search.toLowerCase();
-                    list = list.filter(t =>
-                        t.title.toLowerCase().includes(q) ||
-                        (t.description || '').toLowerCase().includes(q)
-                    );
-                }
+
+                // Client-side sorting (search is now handled server-side)
+                list = sortTasks(list);
+
                 setTasks(list);
                 setPagination(data.pagination || { total: list.length, page: 1, pages: 1 });
             } else {
@@ -130,7 +164,7 @@ export default function QuickTasks() {
             setError(err?.response?.data?.message || 'Failed to connect to server. Please try again.');
         }
         finally { setLoading(false); }
-    }, [view, filters, search]);
+    }, [view, filters, search, sortBy]);
 
     // ─── Fetch stats ─────────────────────────────────────────────────────
     const fetchStats = useCallback(async () => {
@@ -141,6 +175,17 @@ export default function QuickTasks() {
     }, []);
 
     useEffect(() => { fetchTasks(1); fetchStats(); }, [fetchTasks, fetchStats]);
+
+    // Close filter panel when clicking outside
+    useEffect(() => {
+        const onClick = (event) => {
+            if (showFiltersPanel && filterPanelRef.current && !filterPanelRef.current.contains(event.target)) {
+                setShowFiltersPanel(false);
+            }
+        };
+        document.addEventListener('mousedown', onClick);
+        return () => document.removeEventListener('mousedown', onClick);
+    }, [showFiltersPanel]);
 
     // ─── Refresh detail task if open ─────────────────────────────────────
     const refreshDetail = async (id) => {
@@ -226,6 +271,23 @@ export default function QuickTasks() {
 
             if (res.success) {
                 setSuccessMessage(editTask ? 'Task updated successfully!' : 'Task created successfully!');
+
+                // Notify assignee when task is assigned (and not assigned to self)
+                const assignedId = payload.assignedTo;
+                const assignedChanged = editTask ? assignedId && assignedId !== (editTask.assignedTo?._id || editTask.assignedTo) : true;
+                if (assignedId && assignedId !== user._id && assignedChanged) {
+                    try {
+                        await notificationApi.create({
+                            user: assignedId,
+                            title: editTask ? 'Task Assignment Updated' : 'New Task Assigned',
+                            message: `${user.fullName} assigned you a task: "${payload.title}"`,
+                            type: 'task'
+                        });
+                    } catch (_e) {
+                        // ignore notification failures
+                    }
+                }
+
                 setTimeout(() => setSuccessMessage(''), 3000);
                 closeForm();
                 fetchTasks(1);
@@ -289,6 +351,20 @@ export default function QuickTasks() {
         if (res.success) {
             setDetailTask(d => ({ ...d, comments: res.data }));
             setCommentText('');
+
+            // Notify assignee (if not the commenter)
+            if (detailTask.assignedTo && detailTask.assignedTo._id !== user._id) {
+                try {
+                    await notificationApi.create({
+                        user: detailTask.assignedTo._id,
+                        title: 'New Comment on Your Task',
+                        message: `${user.fullName} commented on the task: "${detailTask.title}"`,
+                        type: 'task'
+                    });
+                } catch (_e) {
+                    // swallow - notifications are best-effort
+                }
+            }
         }
         setCommentSaving(false);
     };
@@ -424,51 +500,116 @@ export default function QuickTasks() {
                     </svg>
                     <input
                         className="w-full pl-9 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-slate-50"
-                        placeholder="Search tasks..."
+                        placeholder="Search tasks, assignee, creator..."
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                     />
                 </div>
 
-                {/* Priority */}
-                <select
-                    value={filters.priority}
-                    onChange={e => setFilters(p => ({ ...p, priority: e.target.value }))}
-                    className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-400 text-slate-600"
-                >
-                    <option value="">All Priorities</option>
-                    {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
-
-                {/* Status */}
-                <select
-                    value={filters.status}
-                    onChange={e => setFilters(p => ({ ...p, status: e.target.value }))}
-                    className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-400 text-slate-600"
-                >
-                    <option value="">All Statuses</option>
-                    {STATUSES.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                </select>
-
-                {/* Category */}
-                <select
-                    value={filters.category}
-                    onChange={e => setFilters(p => ({ ...p, category: e.target.value }))}
-                    className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-400 text-slate-600"
-                >
-                    <option value="">All Categories</option>
-                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-
-                {/* Clear */}
-                {(filters.priority || filters.status || filters.category || search) && (
+                {/* Filters dropdown */}
+                <div className="relative">
                     <button
-                        onClick={() => { setFilters({ status: '', priority: '', category: '' }); setSearch(''); }}
-                        className="text-xs font-semibold text-red-500 hover:text-red-700 px-2"
+                        onClick={() => setShowFiltersPanel(prev => !prev)}
+                        className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl border transition ${showFiltersPanel ? 'bg-teal-600 text-white border-teal-600 shadow-md shadow-teal-500/20' : 'bg-white text-slate-600 border-slate-200 hover:border-teal-400 hover:text-teal-700'}`}
                     >
-                        Clear
+                        Filters
+                        <span className={`inline-block transition-transform ${showFiltersPanel ? 'rotate-180' : ''}`}>
+                            ▼
+                        </span>
                     </button>
-                )}
+
+                    {showFiltersPanel && (
+                        <div ref={filterPanelRef} className="absolute right-0 mt-2 w-[320px] sm:w-[380px] bg-white border border-slate-200 rounded-2xl shadow-xl p-4 z-50">
+                            <div className="grid grid-cols-1 gap-3">
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Priority</label>
+                                    <select
+                                        value={filters.priority}
+                                        onChange={e => setFilters(p => ({ ...p, priority: e.target.value }))}
+                                        className="mt-1 w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-400 text-slate-600"
+                                    >
+                                        <option value="">All Priorities</option>
+                                        {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Status</label>
+                                    <select
+                                        value={filters.status}
+                                        onChange={e => setFilters(p => ({ ...p, status: e.target.value }))}
+                                        className="mt-1 w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-400 text-slate-600"
+                                    >
+                                        <option value="">All Statuses</option>
+                                        {STATUSES.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Category</label>
+                                    <select
+                                        value={filters.category}
+                                        onChange={e => setFilters(p => ({ ...p, category: e.target.value }))}
+                                        className="mt-1 w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-400 text-slate-600"
+                                    >
+                                        <option value="">All Categories</option>
+                                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Assignee</label>
+                                    <select
+                                        value={filters.assignedTo}
+                                        onChange={e => setFilters(p => ({ ...p, assignedTo: e.target.value }))}
+                                        className="mt-1 w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-400 text-slate-600"
+                                    >
+                                        <option value="">All Assignees</option>
+                                        {users.map(u => (
+                                            <option key={u._id} value={u._id}>{u.fullName} ({u.role})</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Due Date</label>
+                                        <input
+                                            type="date"
+                                            value={filters.dueDate}
+                                            onChange={e => setFilters(p => ({ ...p, dueDate: e.target.value }))}
+                                            className="mt-1 w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-400 text-slate-600"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sort</label>
+                                        <select
+                                            value={sortBy}
+                                            onChange={e => setSortBy(e.target.value)}
+                                            className="mt-1 w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-400 text-slate-600"
+                                        >
+                                            <option value="newest">Newest</option>
+                                            <option value="oldest">Oldest</option>
+                                            <option value="dueSoon">Due Soon</option>
+                                            <option value="priority">Priority</option>
+                                            <option value="assignee">Assignee</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <button
+                                    onClick={() => {
+                                        setFilters({ status: '', priority: '', category: '', assignedTo: '', dueDate: '' });
+                                        setSearch('');
+                                    }}
+                                    className="mt-2 w-full py-2 text-sm font-semibold text-red-600 border border-red-200 rounded-xl hover:bg-red-50 transition"
+                                >
+                                    Clear filters
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* ── TASK LIST ────────────────────────────────────────────── */}
@@ -486,7 +627,7 @@ export default function QuickTasks() {
                     </button>
                 </div>
             ) : (
-                <div className="space-y-3">
+                <div className="bg-white border border-slate-100 rounded-2xl divide-y divide-slate-100 padding-30">
                     {tasks.map(task => (
                         <TaskCard
                             key={task._id}
@@ -531,7 +672,7 @@ export default function QuickTasks() {
                         <form onSubmit={handleSave} className="p-6 space-y-5">
                             {/* Title */}
                             <div>
-                                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Title *</label>
+                                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Title*</label>
                                 <input
                                     name="title" value={formData.title} onChange={handleFormChange} required
                                     placeholder="What needs to be done?"
@@ -577,16 +718,16 @@ export default function QuickTasks() {
                             {/* Row: Assign + Due Date */}
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Assign To</label>
+                                    <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Assign To*</label>
                                     <select name="assignedTo" value={formData.assignedTo} onChange={handleFormChange}
-                                        className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-slate-50">
+                                        required className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-slate-50">
                                         <option value="">Unassigned</option>
                                         {users.filter(u => u.role?.toLowerCase() !== 'admin').map(u => <option key={u._id} value={u._id}>{u.fullName} ({u.role})</option>)}
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Due Date</label>
-                                    <input type="date" name="dueDate" value={formData.dueDate} onChange={handleFormChange}
+                                    <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Due Date*</label>
+                                    <input type="date" name="dueDate" value={formData.dueDate} required onChange={handleFormChange}
                                         min={new Date().toLocaleDateString('en-CA')}
                                         className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-slate-50" />
                                 </div>
@@ -653,226 +794,332 @@ export default function QuickTasks() {
 
             {/* ══ DETAIL MODAL ══════════════════════════════════════════ */}
             {detailTask && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => { setDetailTask(null); setShowReassignDropdown(false); }}>
+                <div
+                    className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6 z-50"
+                    onClick={() => {
+                        setDetailTask(null)
+                        setShowReassignDropdown(false)
+                    }}
+                >
+
                     <div
-                        className="bg-white w-full sm:w-[500px] max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden relative"
+                        className="bg-white w-full max-w-xl max-h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden relative border border-slate-200 animate-in fade-in zoom-in-95 duration-200"
                         onClick={e => e.stopPropagation()}
                     >
-                        {/* Detail Header */}
-                        <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50">
-                            <div className="flex items-center gap-3">
-                                <span className="text-2xl">{CATEGORY_ICON[detailTask.category] || '📋'}</span>
+
+                        {/* HEADER */}
+                        <div className="flex flex-wrap items-start justify-between gap-3 p-6 border-b border-slate-100 bg-slate-50">
+
+                            <div className="flex items-start gap-3">
+                                <span className="text-3xl">
+                                    {CATEGORY_ICON[detailTask.category] || "📋"}
+                                </span>
+
                                 <div>
-                                    <h2 className="font-bold text-slate-800 leading-tight">{detailTask.title}</h2>
-                                    <p className="text-xs text-slate-500 mt-0.5">{detailTask.category}</p>
+                                    <h2 className="font-bold text-slate-900 text-lg leading-tight">
+                                        {detailTask.title}
+                                    </h2>
+                                    <p className="text-xs text-slate-500 mt-1">
+                                        {detailTask.category}
+                                    </p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2">
+
+                            <div className="flex flex-wrap items-center gap-2 relative">
+
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setShowReassignDropdown(!showReassignDropdown)}
+                                        className="text-xs px-4 py-2 bg-teal-50 text-teal-600 rounded-xl font-semibold hover:bg-teal-100 transition flex items-center gap-2"
+                                    >
+                                        🔄 Reassign
+                                    </button>
+
+                                    {showReassignDropdown && (
+                                        <div
+                                            className="absolute right-0 top-full mt-2 z-50 w-72 bg-white border border-slate-100 rounded-2xl shadow-2xl p-4 animate-in fade-in zoom-in-95 duration-200"
+                                            onClick={e => e.stopPropagation()}
+                                        >
+
+                                            <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">
+                                                Reassign Reason
+                                            </h4>
+
+                                            <textarea
+                                                value={reassignReason}
+                                                onChange={e => setReassignReason(e.target.value)}
+                                                placeholder="Reason for reassignment..."
+                                                rows={2}
+                                                className="w-full p-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-100 bg-slate-50 resize-none mb-4"
+                                            />
+
+                                            <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
+                                                Select New Assignee
+                                            </h4>
+
+                                            <div className="max-h-48 overflow-y-auto space-y-1">
+
+                                                {users
+                                                    .filter(u => u._id !== detailTask.assignedTo?._id)
+                                                    .map(u => (
+                                                        <button
+                                                            key={u._id}
+                                                            disabled={reassigning}
+                                                            onClick={() => handleReassign(u._id)}
+                                                            className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-teal-50 text-left"
+                                                        >
+
+                                                            <div className="w-7 h-7 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center text-[10px] font-bold uppercase">
+                                                                {u.fullName?.[0]}
+                                                            </div>
+
+                                                            <div>
+                                                                <div className="text-xs font-bold text-slate-700">
+                                                                    {u.fullName}
+                                                                </div>
+                                                                <div className="text-[10px] text-slate-400 capitalize">
+                                                                    {u.role}
+                                                                </div>
+                                                            </div>
+
+                                                        </button>
+                                                    ))}
+
+                                                {users.length === 0 && (
+                                                    <p className="text-xs text-slate-400 text-center py-2 italic">
+                                                        No other users found
+                                                    </p>
+                                                )}
+
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
                                 <button
-                                    onClick={() => setShowReassignDropdown(!showReassignDropdown)}
-                                    className="text-xs px-3 py-1.5 bg-teal-50 text-teal-600 rounded-lg font-semibold hover:bg-teal-100 transition flex items-center gap-1.5"
+                                    onClick={() => openEdit(detailTask)}
+                                    className="text-xs px-4 py-2 bg-blue-50 text-blue-600 rounded-xl font-semibold hover:bg-blue-100 transition"
                                 >
-                                    🔄 Reassign
+                                    Edit
                                 </button>
-                                <button onClick={() => openEdit(detailTask)} className="text-xs px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg font-semibold hover:bg-blue-100 transition">Edit</button>
-                                <button onClick={() => { setDeleteTarget(detailTask); setDetailTask(null); }} className="text-xs px-3 py-1.5 bg-red-50 text-red-500 rounded-lg font-semibold hover:bg-red-100 transition">Delete</button>
-                                <button onClick={() => setDetailTask(null)} className="w-7 h-7 flex items-center justify-center rounded-full bg-slate-200 text-slate-500 hover:bg-slate-300 text-sm transition">✕</button>
+
+                                <button
+                                    onClick={() => {
+                                        setDeleteTarget(detailTask)
+                                        setDetailTask(null)
+                                    }}
+                                    className="text-xs px-4 py-2 bg-red-50 text-red-500 rounded-xl font-semibold hover:bg-red-100 transition"
+                                >
+                                    Delete
+                                </button>
+
+                                <button
+                                    onClick={() => setDetailTask(null)}
+                                    className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-200 text-slate-500 hover:bg-slate-300 text-sm transition"
+                                >
+                                    ✕
+                                </button>
+
                             </div>
                         </div>
 
-                        {/* Reassign Dropdown Overlay */}
-                        {showReassignDropdown && (
-                            <div className="absolute top-[70px] right-5 z-[60] w-72 bg-white border border-slate-100 rounded-2xl shadow-2xl p-4 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-                                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-1 mb-3">Reassign Reason</h4>
-                                <textarea
-                                    value={reassignReason}
-                                    onChange={(e) => setReassignReason(e.target.value)}
-                                    placeholder="Reason for reassignment..."
-                                    className="w-full p-2.5 text-[12px] border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-100 bg-slate-50 resize-none mb-4"
-                                    rows={2}
-                                />
+                        {/* SCROLL BODY */}
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
 
-                                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-1 mb-2">Select New Assignee</h4>
-                                <div className="max-h-48 overflow-y-auto space-y-1">
-                                    {users.filter(u => u._id !== detailTask.assignedTo?._id).map(u => (
-                                        <button
-                                            key={u._id}
-                                            disabled={reassigning}
-                                            onClick={() => handleReassign(u._id)}
-                                            className="w-full flex items-center gap-3 p-2 rounded-xl transition-all group text-left hover:bg-teal-50"
-                                        >
-                                            <div className="w-7 h-7 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center text-[10px] font-bold uppercase group-hover:bg-teal-600 group-hover:text-white transition-colors">
-                                                {u.fullName?.[0]}
-                                            </div>
-                                            <div>
-                                                <div className="text-[13px] font-bold text-slate-700">{u.fullName}</div>
-                                                <div className="text-[10px] text-slate-400 capitalize">{u.role}</div>
-                                            </div>
-                                        </button>
-                                    ))}
-                                    {users.length === 0 && <p className="text-[11px] text-slate-400 text-center py-2 italic">No other users found</p>}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Detail Body */}
-                        <div className="flex-1 overflow-y-auto p-5 space-y-5">
-                            {/* Badges row */}
+                            {/* BADGES */}
                             <div className="flex flex-wrap gap-2">
-                                <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${PRIORITY_STYLE[detailTask.priority]}`}>{detailTask.priority}</span>
-                                <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${STATUS_STYLE[detailTask.status]}`}>{detailTask.status?.replace('_', ' ')}</span>
-                                {isOverdue(detailTask) && <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700">⚠ OVERDUE</span>}
-                                {detailTask.repeatType && detailTask.repeatType !== 'NONE' && (
-                                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-violet-100 text-violet-700">🔁 {detailTask.repeatType}</span>
+
+                                <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${PRIORITY_STYLE[detailTask.priority]}`}>
+                                    {detailTask.priority}
+                                </span>
+
+                                <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${STATUS_STYLE[detailTask.status]}`}>
+                                    {detailTask.status?.replace("_", " ")}
+                                </span>
+
+                                {isOverdue(detailTask) && (
+                                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700">
+                                        ⚠ OVERDUE
+                                    </span>
                                 )}
-                                {detailTask.reminderTime && detailTask.reminderType !== 'None' && (
-                                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700">🔔 Reminder Set</span>
-                                )}
+
                             </div>
 
-                            {/* Quick status change */}
+                            {/* STATUS BUTTON */}
                             <button
                                 onClick={() => cycleStatus(detailTask)}
-                                className="w-full py-2 text-sm font-semibold bg-teal-50 border border-teal-200 text-teal-700 rounded-xl hover:bg-teal-100 transition"
+                                className="w-full py-2.5 text-sm font-semibold bg-teal-50 border border-teal-200 text-teal-700 rounded-2xl hover:bg-teal-100 transition"
                             >
-                                Cycle Status ▶ {['TODO', 'IN_PROGRESS', 'DONE'][(['TODO', 'IN_PROGRESS', 'DONE'].indexOf(detailTask.status) + 1) % 3].replace('_', ' ')}
+                                Cycle Status ▶
                             </button>
 
-                            {/* Meta info */}
+                            {/* META */}
                             <div className="grid grid-cols-2 gap-3 text-sm">
+
                                 <div className="bg-slate-50 rounded-xl p-3">
-                                    <div className="text-xs text-slate-400 font-medium mb-0.5">Due Date</div>
-                                    <div className={`font-semibold ${isOverdue(detailTask) ? 'text-red-600' : 'text-slate-700'}`}>{fmt(detailTask.dueDate)}</div>
+                                    <div className="text-xs text-slate-400 mb-1">Due Date</div>
+                                    <div className={`${isOverdue(detailTask) ? "text-red-600" : "text-slate-700"} font-semibold`}>
+                                        {fmt(detailTask.dueDate)}
+                                    </div>
                                 </div>
+
                                 <div className="bg-slate-50 rounded-xl p-3">
-                                    <div className="text-xs text-slate-400 font-medium mb-0.5">Assigned To</div>
-                                    <div className="font-semibold text-slate-700">{detailTask.assignedTo?.fullName || 'Unassigned'}</div>
-                                    {detailTask.reassignmentHistory?.length > 0 && (
-                                        <div className="mt-1 flex items-center gap-1">
-                                            <span className="text-[9px] font-black text-amber-600 bg-amber-50 px-1 py-0.5 rounded border border-amber-100 uppercase tracking-tighter">Reassigned</span>
-                                            <span className="text-[9px] font-bold text-slate-400">by {detailTask.reassignmentHistory[detailTask.reassignmentHistory.length - 1].reassignedBy?.fullName || 'System'}</span>
-                                        </div>
-                                    )}
-                                    {detailTask.reassignmentHistory?.length > 0 && (
-                                        <p className="text-[10px] text-slate-500 italic mt-2 bg-white/50 p-2 rounded border border-slate-100/50 line-clamp-1">
-                                            "{detailTask.reassignmentHistory[detailTask.reassignmentHistory.length - 1].reason}"
-                                        </p>
-                                    )}
+                                    <div className="text-xs text-slate-400 mb-1">Assigned To</div>
+                                    <div className="font-semibold text-slate-700">
+                                        {detailTask.assignedTo?.fullName || "Unassigned"}
+                                    </div>
                                 </div>
+
                             </div>
-                            {detailTask.reminderTime && (
-                                <div className="bg-amber-50 rounded-xl p-3">
-                                    <div className="text-xs text-amber-500 font-medium mb-0.5">🔔 Reminder</div>
-                                    <div className="font-semibold text-slate-700 text-xs">{fmt(detailTask.reminderTime)} — {detailTask.reminderType}</div>
+
+                            {/* DESCRIPTION */}
+                            {detailTask.description && (
+                                <div>
+                                    <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">
+                                        Description
+                                    </h4>
+
+                                    <p className="text-sm text-slate-600 whitespace-pre-line">
+                                        {detailTask.description}
+                                    </p>
                                 </div>
                             )}
-                            <div className="bg-slate-50 rounded-xl p-3">
-                                <div className="text-xs text-slate-400 font-medium mb-0.5">Created By</div>
-                                <div className="font-semibold text-slate-700">{detailTask.createdBy?.fullName || '—'}</div>
-                            </div>
-                        </div>
 
-                        {/* Description */}
-                        {detailTask.description && (
-                            <div>
-                                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Description</h4>
-                                <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">{detailTask.description}</p>
-                            </div>
-                        )}
+                            {/* CHECKLIST */}
+                            {detailTask.checklist?.length > 0 && (() => {
 
-                        {/* Checklist */}
-                        {detailTask.checklist?.length > 0 && (
-                            <div>
-                                <div className="flex items-center justify-between mb-2">
-                                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Checklist</h4>
-                                    <span className="text-xs font-semibold text-teal-600">{checklistProgress(detailTask.checklist)}%</span>
-                                </div>
-                                {/* Progress bar */}
-                                <div className="h-1.5 bg-slate-100 rounded-full mb-3">
-                                    <div className="h-1.5 bg-teal-500 rounded-full transition-all" style={{ width: `${checklistProgress(detailTask.checklist)}%` }} />
-                                </div>
-                                <div className="space-y-2">
-                                    {detailTask.checklist.map(item => (
-                                        <label key={item._id} className="flex items-center gap-3 bg-slate-50 px-3 py-2.5 rounded-xl border border-slate-200 cursor-pointer hover:bg-teal-50 transition">
-                                            <input
-                                                type="checkbox"
-                                                checked={item.completed}
-                                                onChange={e => toggleChecklist(detailTask._id, item._id, e.target.checked)}
-                                                className="accent-teal-600 w-4 h-4"
+                                const progress = checklistProgress(detailTask.checklist)
+
+                                return (
+                                    <div>
+
+                                        <div className="flex items-center justify-between mb-2">
+                                            <h4 className="text-xs font-bold text-slate-500 uppercase">
+                                                Checklist
+                                            </h4>
+                                            <span className="text-xs font-semibold text-teal-600">
+                                                {progress}%
+                                            </span>
+                                        </div>
+
+                                        <div className="h-1.5 bg-slate-100 rounded-full mb-3">
+                                            <div
+                                                className="h-1.5 bg-teal-500 rounded-full transition-all"
+                                                style={{ width: `${progress}%` }}
                                             />
-                                            <span className={`text-sm flex-1 ${item.completed ? 'line-through text-slate-400' : 'text-slate-700'}`}>{item.text}</span>
-                                            {item.completed && <span className="text-emerald-500 text-xs font-bold">✓</span>}
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Comments */}
-                        <div className="mb-6 pt-4 border-t border-slate-100">
-                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Comments ({detailTask.comments?.length || 0})</h4>
-                            <div className="space-y-3 mb-3">
-                                {(detailTask.comments || []).map((c, i) => (
-                                    <div key={i} className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <div className="w-6 h-6 rounded-full bg-teal-500 flex items-center justify-center text-white text-xs font-bold">
-                                                {c.user?.fullName?.[0] || '?'}
-                                            </div>
-                                            <span className="text-xs font-semibold text-slate-700">{c.user?.fullName || 'User'}</span>
-                                            <span className="text-xs text-slate-400 ml-auto">{new Date(c.createdAt).toLocaleDateString()}</span>
                                         </div>
-                                        <p className="text-sm text-slate-600 pl-8">{c.text}</p>
+
+                                        <div className="space-y-2">
+
+                                            {detailTask.checklist.map(item => (
+
+                                                <label
+                                                    key={item._id}
+                                                    className="flex items-center gap-3 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200 cursor-pointer hover:bg-teal-50"
+                                                >
+
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={item.completed}
+                                                        onChange={e =>
+                                                            toggleChecklist(
+                                                                detailTask._id,
+                                                                item._id,
+                                                                e.target.checked
+                                                            )
+                                                        }
+                                                        className="accent-teal-600 w-4 h-4"
+                                                    />
+
+                                                    <span
+                                                        className={`text-sm flex-1 ${item.completed
+                                                                ? "line-through text-slate-400"
+                                                                : "text-slate-700"
+                                                            }`}
+                                                    >
+                                                        {item.text}
+                                                    </span>
+
+                                                </label>
+
+                                            ))}
+
+                                        </div>
                                     </div>
-                                ))}
-                            </div>
-                            <div className="flex gap-2">
-                                <input
-                                    value={commentText}
-                                    onChange={e => setCommentText(e.target.value)}
-                                    onKeyDown={e => e.key === 'Enter' && handleAddComment()}
-                                    placeholder="Write a comment..."
-                                    className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-slate-50"
-                                />
-                                <button onClick={handleAddComment} disabled={commentSaving || !commentText.trim()} className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg font-semibold hover:bg-teal-700 disabled:opacity-50 transition">
-                                    {commentSaving ? '...' : 'Post'}
-                                </button>
-                            </div>
-                        </div>
+                                )
+                            })()}
 
-                        {/* History */}
-                        {detailTask.reassignmentHistory?.length > 0 && (
+                            {/* COMMENTS */}
                             <div className="pt-4 border-t border-slate-100">
-                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Task Timeline</h4>
-                                <div className="space-y-4">
-                                    {[...detailTask.reassignmentHistory].reverse().map((h, i) => (
-                                        <div key={i} className="flex gap-3 relative before:absolute before:left-3 before:top-8 before:bottom-0 before:w-[1.5px] before:bg-slate-50 last:before:hidden">
-                                            <div className="w-6 h-6 rounded-lg bg-teal-50 border border-teal-100 flex items-center justify-center shrink-0 z-10">
-                                                <svg className="w-3 h-3 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m4-4l-4-4" /></svg>
-                                            </div>
-                                            <div className="flex-1 pb-2">
-                                                <div className="flex justify-between items-baseline mb-1">
-                                                    <span className="text-[11px] font-black text-slate-800 uppercase tracking-tight">{h.reassignedBy?.fullName || 'System'}</span>
-                                                    <span className="text-[9px] font-black text-slate-300 uppercase">{new Date(h.timestamp || h.createdAt).toLocaleDateString()}</span>
+
+                                <h4 className="text-xs font-bold text-slate-500 uppercase mb-3">
+                                    Comments ({detailTask.comments?.length || 0})
+                                </h4>
+
+                                <div className="space-y-3 mb-3">
+
+                                    {(detailTask.comments || []).map((c, i) => (
+
+                                        <div key={c._id || i}>
+
+                                            <div className="flex items-center gap-2 mb-1">
+
+                                                <div className="w-6 h-6 rounded-full bg-teal-500 flex items-center justify-center text-white text-xs font-bold">
+                                                    {c.user?.fullName?.[0] || "?"}
                                                 </div>
-                                                <div className="bg-white border border-slate-100/80 rounded-xl p-2.5 shadow-sm">
-                                                    <p className="text-[12px] text-slate-500 font-medium mb-1.5 flex items-center gap-2">
-                                                        <span>{h.previousAssignee?.fullName || 'Unassigned'}</span>
-                                                        <svg className="w-3 h-3 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-                                                        <span className="font-bold text-teal-600">{h.newAssignee?.fullName || 'User'}</span>
-                                                    </p>
-                                                    <div className="text-[11px] text-slate-600 bg-slate-50/50 p-2 rounded-lg border border-slate-50 italic">
-                                                        "{h.reason || 'No reason provided'}"
-                                                    </div>
-                                                </div>
+
+                                                <span className="text-xs font-semibold text-slate-700">
+                                                    {c.user?.fullName || "User"}
+                                                </span>
+
+                                                <span className="text-xs text-slate-400 ml-auto">
+                                                    {new Date(c.createdAt).toLocaleDateString()}
+                                                </span>
+
                                             </div>
+
+                                            <p className="text-sm text-slate-600 pl-8 break-words">
+                                                {c.text}
+                                            </p>
+
                                         </div>
+
                                     ))}
+
+                                </div>
+
+                                <div className="flex gap-2">
+
+                                    <input
+                                        value={commentText}
+                                        onChange={e => setCommentText(e.target.value)}
+                                        onKeyDown={e => {
+                                            if (e.key === "Enter" && !e.shiftKey) {
+                                                e.preventDefault()
+                                                handleAddComment()
+                                            }
+                                        }}
+                                        placeholder="Write a comment..."
+                                        className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-slate-50"
+                                    />
+
+                                    <button
+                                        onClick={handleAddComment}
+                                        disabled={commentSaving || !commentText.trim()}
+                                        className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg font-semibold hover:bg-teal-700 disabled:opacity-50"
+                                    >
+                                        {commentSaving ? "..." : "Post"}
+                                    </button>
+
                                 </div>
                             </div>
-                        )}
+
+                        </div>
                     </div>
                 </div>
             )}
+
+
 
             {/* ══ DELETE CONFIRMATION MODAL ══════════════════════════════ */}
             {deleteTarget && (
@@ -903,94 +1150,187 @@ export default function QuickTasks() {
 // ═══════════════════════════════════════════════════════════════════════════════
 //  TASK CARD COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
+// function TaskCard({ task, onOpen, onEdit, onDelete, onCycleStatus, checklistProgress }) {
+//     const overdue = isOverdue(task);
+
+//     return (
+//         <div
+//             className={`group flex items-center gap-4 px-4 py-3 cursor-pointer transition-colors duration-150 ${overdue ? 'bg-red-50/40 border-l-4 border-red-300' : 'hover:bg-slate-50'}
+//                 ${task.status === 'DONE' ? 'opacity-90' : ''}`}
+//             onClick={onOpen}
+//         >
+//             {/* Icon */}
+//             <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-50 text-xl text-slate-500">
+//                 {CATEGORY_ICON[task.category] || '📋'}
+//             </div>
+
+//             <div className="min-w-0 flex-1">
+//                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+//                     <div className="min-w-0">
+//                         <h3 className={`text-sm font-semibold truncate ${task.status === 'DONE' ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+//                             {task.title}
+//                         </h3>
+//                         <p className="text-xs text-slate-500 truncate">{task.description || 'No description'}</p>
+//                     </div>
+
+//                     <div className="flex items-center gap-2">
+//                         <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${PRIORITY_STYLE[task.priority]}`}>{task.priority}</span>
+//                         <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${STATUS_STYLE[task.status]}`}>{task.status?.replace('_', ' ')}</span>
+//                     </div>
+//                 </div>
+
+//                 <div className="mt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-slate-500">
+//                     <div className="flex items-center gap-2">
+//                         <span>📅</span>
+//                         <span className={`${overdue ? 'text-red-500' : ''}`}>{task.dueDate ? fmt(task.dueDate) : 'No due date'}</span>
+//                     </div>
+//                     <div className="flex items-center gap-2">
+//                         <span>👤</span>
+//                         <span className="truncate">{task.assignedTo?.fullName || 'Unassigned'}</span>
+//                     </div>
+//                     <div className="flex items-center gap-2">
+//                         <span>💬</span>
+//                         <span>{task.comments?.length || 0} comments</span>
+//                     </div>
+//                 </div>
+//             </div>
+
+//             <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+//                 <button onClick={onCycleStatus} className="p-2 rounded-lg bg-teal-50 text-teal-600 hover:bg-teal-100 transition" title="Cycle Status">
+//                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+//                 </button>
+//                 <button onClick={onEdit} className="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition" title="Edit">
+//                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+//                 </button>
+//                 <button onClick={onDelete} className="p-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition" title="Delete">
+//                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+//                 </button>
+//             </div>
+//         </div>
+//     );
+// }
 function TaskCard({ task, onOpen, onEdit, onDelete, onCycleStatus, checklistProgress }) {
     const overdue = isOverdue(task);
 
     return (
         <div
-            className={`group bg-white border rounded-2xl px-5 py-4 cursor-pointer hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 ${overdue ? 'border-red-200 bg-red-50/30' : 'border-slate-200 hover:border-teal-200'}`}
+            className={`group flex items-start gap-4 px-4 py-3 border-b cursor-pointer transition
+            ${overdue ? 'bg-red-50/40 border-l-4 border-red-300' : 'hover:bg-slate-50'}
+            ${task.status === 'DONE' ? 'opacity-80' : ''}`}
             onClick={onOpen}
         >
-            <div className="flex items-start gap-4">
-                {/* Category Icon */}
-                <div className="text-xl mt-0.5 shrink-0">{CATEGORY_ICON[task.category] || '📋'}</div>
 
-                {/* Main Content */}
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                            <h3 className={`font-semibold text-slate-800 truncate text-sm ${task.status === 'DONE' ? 'line-through text-slate-400' : ''}`}>
-                                {task.title}
-                            </h3>
-                            {task.description && (
-                                <p className="text-xs text-slate-400 mt-0.5 truncate">{task.description}</p>
-                            )}
-                        </div>
-                        {/* Actions */}
-                        <div className="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                            <button onClick={onCycleStatus} className="p-1.5 rounded-lg bg-teal-50 text-teal-600 hover:bg-teal-100 transition" title="Cycle Status">
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                            </button>
-                            <button onClick={onEdit} className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition" title="Edit">
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                            </button>
-                            <button onClick={onDelete} className="p-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition" title="Delete">
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                            </button>
-                        </div>
+            {/* Icon */}
+            <div className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center bg-slate-100 text-xl text-slate-600">
+                {CATEGORY_ICON[task.category] || '📋'}
+            </div>
+
+
+            {/* Main Content */}
+            <div className="flex-1 min-w-0">
+
+                {/* Title Row */}
+                <div className="flex items-start justify-between gap-3">
+
+                    <div className="min-w-0">
+                        <h3
+                            className={`text-sm font-semibold truncate
+                            ${task.status === 'DONE'
+                                    ? 'line-through text-slate-400'
+                                    : 'text-slate-800'}`}
+                        >
+                            {task.title}
+                        </h3>
+
+                        <p className="text-xs text-slate-500 truncate">
+                            {task.description || 'No description'}
+                        </p>
                     </div>
 
-                    {/* Badges Row */}
-                    <div className="flex flex-wrap items-center gap-2 mt-2.5">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${PRIORITY_STYLE[task.priority]}`}>{task.priority}</span>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${STATUS_STYLE[task.status]}`}>{task.status?.replace('_', ' ')}</span>
-                        {overdue && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">⚠ Overdue</span>}
-                        {task.repeatType && task.repeatType !== 'NONE' && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 text-violet-700">🔁 {task.repeatType}</span>
-                        )}
-                        {task.reminderTime && task.reminderType !== 'None' && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">🔔 Reminder</span>
-                        )}
+                    {/* Status + Priority */}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${PRIORITY_STYLE[task.priority]}`}>
+                            {task.priority}
+                        </span>
 
-                        {/* Spacer */}
-                        <div className="flex-1" />
-
-                        {/* Due date */}
-                        {task.dueDate && (
-                            <span className={`text-[11px] font-semibold ${overdue ? 'text-red-500' : 'text-slate-400'}`}>
-                                📅 {fmt(task.dueDate)}
-                            </span>
-                        )}
-
-                        {/* Assigned avatar */}
-                        {task.assignedTo && (
-                            <div className="flex items-center gap-1">
-                                <div className="w-5 h-5 rounded-full bg-teal-500 flex items-center justify-center text-white text-[10px] font-bold">
-                                    {task.assignedTo.fullName?.[0] || '?'}
-                                </div>
-                                <span className="text-[11px] text-slate-400">{task.assignedTo.fullName}</span>
-                            </div>
-                        )}
-
-                        {/* Comment count */}
-                        {task.comments?.length > 0 && (
-                            <span className="text-[11px] text-slate-400">💬 {task.comments.length}</span>
-                        )}
+                        <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${STATUS_STYLE[task.status]}`}>
+                            {task.status?.replace('_', ' ')}
+                        </span>
                     </div>
 
-                    {/* Checklist progress bar */}
-                    {task.checklist?.length > 0 && (
-                        <div className="mt-3">
-                            <div className="flex items-center justify-between mb-1">
-                                <span className="text-[10px] text-slate-400 font-medium">Checklist</span>
-                                <span className="text-[10px] font-semibold text-teal-600">{checklistProgress}%</span>
-                            </div>
-                            <div className="h-1 bg-slate-100 rounded-full">
-                                <div className="h-1 bg-teal-500 rounded-full transition-all" style={{ width: `${checklistProgress}%` }} />
-                            </div>
-                        </div>
-                    )}
                 </div>
+
+
+                {/* Meta Info */}
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+
+                    <div className="flex items-center gap-1">
+                        <span>📅</span>
+                        <span className={overdue ? 'text-red-500 font-medium' : ''}>
+                            {task.dueDate ? fmt(task.dueDate) : 'No due date'}
+                        </span>
+                    </div>
+
+                    <div className="flex items-center gap-1 min-w-0">
+                        <span>👤</span>
+                        <span className="truncate">
+                            {task.assignedTo?.fullName || 'Unassigned'}
+                        </span>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                        <span>💬</span>
+                        <span>{task.comments?.length || 0}</span>
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            {/* Actions */}
+            <div
+                className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                onClick={e => e.stopPropagation()}
+            >
+
+                <button
+                    onClick={onCycleStatus}
+                    className="p-2 rounded-lg bg-teal-50 text-teal-600 hover:bg-teal-100 transition"
+                    title="Cycle Status"
+                >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                </button>
+
+                <button
+                    onClick={onEdit}
+                    className="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition"
+                    title="Edit"
+                >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5
+                            m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828
+                            l8.586-8.586z" />
+                    </svg>
+                </button>
+
+                <button
+                    onClick={onDelete}
+                    className="p-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition"
+                    title="Delete"
+                >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862
+                            a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6
+                            m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                </button>
+
             </div>
         </div>
     );

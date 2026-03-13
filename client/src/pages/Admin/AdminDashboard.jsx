@@ -9,7 +9,7 @@ export default function AdminDashboard() {
     const [stats, setStats] = useState({
         totalEmployees: 0,
         totalManagers: 0,
-        totalProjects: 0
+        totalQuickTasks: 0
     });
 
     useEffect(() => {
@@ -19,17 +19,21 @@ export default function AdminDashboard() {
 
     const fetchStats = async () => {
         try {
-            const [usersRes, projectsRes] = await Promise.all([
+            const [usersRes, projectsRes, quickTasksRes] = await Promise.all([
                 axiosInstance.get('/admin/users'),
-                axiosInstance.get('/projects')
+                axiosInstance.get('/projects'),
+                axiosInstance.get('/quick-tasks')
             ]);
             const users = usersRes.data.success ? usersRes.data.data : [];
             const projects = projectsRes.data.success ? projectsRes.data.data : [];
+            const quickTasks = quickTasksRes.data.success ? quickTasksRes.data.data : [];
+            const quickTasksTotal = quickTasksRes.data.success && quickTasksRes.data.pagination ? quickTasksRes.data.pagination.total : quickTasks.length;
 
             setStats({
                 totalEmployees: users.filter(u => u.role === 'employee').length,
                 totalManagers: users.filter(u => u.role === 'manager').length,
-                totalProjects: projects.length
+                totalProjects: projects.length,
+                totalQuickTasks: quickTasksTotal
             });
         } catch (error) {
             console.error('Error fetching admin stats', error);
@@ -46,17 +50,17 @@ export default function AdminDashboard() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center">
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center cursor-pointer" onClick={() => navigate('/admin/users')}>
                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Total Employees</h3>
                     <p className="text-4xl font-bold text-gray-900">{stats.totalEmployees}</p>
                 </div>
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center">
-                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Total Managers</h3>
-                    <p className="text-4xl font-bold text-gray-900">{stats.totalManagers}</p>
-                </div>
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center">
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center cursor-pointer" onClick={() => navigate('/projects')}>
                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Active Projects</h3>
                     <p className="text-4xl font-bold text-gray-900">{stats.totalProjects}</p>
+                </div>
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center cursor-pointer" onClick={() => navigate('/quick-tasks')}>
+                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Total Quick Tasks</h3>
+                    <p className="text-4xl font-bold text-gray-900">{stats.totalQuickTasks}</p>
                 </div>
             </div>
 
